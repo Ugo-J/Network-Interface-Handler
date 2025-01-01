@@ -44,7 +44,13 @@ struct network_interface {
     // interface address IPV6 prefix length
     int ifa_prefixlen_ipv6;
 
+    static const int ROUTE_ARRAY_SIZE = 128;
+
     // route array
+    route_info route_array[ROUTE_ARRAY_SIZE];
+
+    // route count
+    int num_of_routes = 0;
 };
 
 // size of the internal buffer used for the network interface API calls
@@ -80,6 +86,62 @@ void parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len) {
     if (flags & IFF_PROMISC) printf("PROMISCUOUS ");
     printf("\n");
 } */
+
+void print_route_info(struct route_info *route) {
+    char dst[INET_ADDRSTRLEN];
+    char gw[INET_ADDRSTRLEN];
+    char src[INET_ADDRSTRLEN];
+
+    inet_ntop(AF_INET, &route->dst_addr, dst, sizeof(dst));
+    inet_ntop(AF_INET, &route->gateway, gw, sizeof(gw));
+    inet_ntop(AF_INET, &route->src_addr, src, sizeof(src));
+
+    printf("Destination: %s\n", dst);
+    if (route->gateway.s_addr != 0)
+        printf("Gateway: %s\n", gw);
+    if (route->src_addr.s_addr != 0)
+        printf("Source: %s\n", src);
+    printf("Interface: %s\n", route->ifname);
+    
+    printf("Protocol: ");
+    switch(route->protocol) {
+        case RTPROT_BOOT: printf("boot\n"); break;
+        case RTPROT_KERNEL: printf("kernel\n"); break;
+        case RTPROT_STATIC: printf("static\n"); break;
+        case RTPROT_DHCP: printf("dhcp\n"); break;
+        default: printf("unknown(%d)\n", route->protocol);
+    }
+
+    printf("Scope: ");
+    switch(route->scope) {
+        case RT_SCOPE_NOWHERE: printf("nowhere\n"); break;
+        case RT_SCOPE_HOST: printf("host\n"); break;
+        case RT_SCOPE_LINK: printf("link\n"); break;
+        case RT_SCOPE_SITE: printf("site\n"); break;
+        case RT_SCOPE_UNIVERSE: printf("global\n"); break;
+        default: printf("unknown(%d)\n", route->scope);
+    }
+
+    printf("Type: ");
+    switch(route->type) {
+        case RTN_UNSPEC: printf("unspec\n"); break;
+        case RTN_UNICAST: printf("unicast\n"); break;
+        case RTN_LOCAL: printf("local\n"); break;
+        case RTN_BROADCAST: printf("broadcast\n"); break;
+        case RTN_ANYCAST: printf("anycast\n"); break;
+        case RTN_MULTICAST: printf("multicast\n"); break;
+        case RTN_BLACKHOLE: printf("blackhole\n"); break;
+        case RTN_UNREACHABLE: printf("unreachable\n"); break;
+        case RTN_PROHIBIT: printf("prohibit\n"); break;
+        case RTN_THROW: printf("throw\n"); break;
+        case RTN_NAT: printf("nat\n"); break;
+        default: printf("unknown(%d)\n", route->type);
+    }
+
+    if (route->metric)
+        printf("Metric: %u\n", route->metric);
+    printf("\n");
+}
 
 bool send_netlink_request(int sock, int type, int seq) {
     char msg_buffer[BUFFER_SIZE];
@@ -131,8 +193,10 @@ void process_addr_info(struct nlmsghdr *nlh) {
 
     // we loop through the entered network interfaces to find the index of this network interface in the interface array
     for(int i = 0; i<num_of_network_interfaces; i++){
-        if(interface_array[i].index == ifa->ifa_index)
+        if(interface_array[i].index == ifa->ifa_index){
             index = i;
+            break;
+        }
     }
 
     if(index > -1){
@@ -177,6 +241,60 @@ void process_addr_info(struct nlmsghdr *nlh) {
 }
 
 void process_route_info(struct nlmsghdr *nlh) {
+
+    struct rtmsg *rtm;
+    rtm = (struct rtmsg *)NLMSG_DATA(nlh);
+    struct rtattr *tb[RTA_MAX + 1];
+    parse_rtattr(tb, RTA_MAX, RTM_RTA(rtm), RTM_PAYLOAD(nlh));
+
+    // we first fetch the interace index
+    int index = -1;
+
+    // now we check if the index with this route is in the interface array
+    for(int i = 0; i<num_of_network_interfaces; i++){
+        if(interface_array[i].index == *(int *)RTA_DATA(tb[RTA_OIF])){
+            index = i;
+            break;
+        }
+    }
+
+    // this part only runs if the interface with this route was found in the interface array
+    if(index > -1){
+
+        // we create a local reference to the next route entry in the route array at this index of the interface array
+        struct route_info& route_info = interface_array[index].route_array[interface_array[index].num_of_routes];
+        memset(&route_info, 0, sizeof(route_info));
+
+        // Get route attributes
+        if (tb[RTA_DST])
+            memcpy(&route_info.dst_addr, RTA_DATA(tb[RTA_DST]), sizeof(route_info.dst_addr));
+
+        if (tb[RTA_GATEWAY])
+            memcpy(&route_info.gateway, RTA_DATA(tb[RTA_GATEWAY]), sizeof(route_info.gateway));
+
+        if (tb[RTA_PREFSRC])
+            memcpy(&route_info.src_addr, RTA_DATA(tb[RTA_PREFSRC]), sizeof(route_info.src_addr));
+
+        if (tb[RTA_OIF])
+            route_info.ifindex = *(int *)RTA_DATA(tb[RTA_OIF]);
+
+        if (tb[RTA_METRICS])
+            route_info.metric = *(unsigned int *)RTA_DATA(tb[RTA_METRICS]);
+
+        route_info.protocol = rtm->rtm_protocol;
+        route_info.scope = rtm->rtm_scope;
+        route_info.type = rtm->rtm_type;
+        route_info.flags = rtm->rtm_flags;
+
+        // we increment the num of routes for this interface
+        interface_array[index].num_of_routes++;
+
+        // Get interface name from index
+        if_indextoname(route_info.ifindex, route_info.ifname);
+
+        print_route_info(&route_info);
+
+    }
 
 }
 
@@ -313,14 +431,14 @@ int get_network_interfaces() {
 int main() {
     get_network_interfaces();
 
-    printf("\n=== Network Interface Details (Netlink) ===\n\n");
+    /* printf("\n=== Network Interface Details (Netlink) ===\n\n");
 
     for(int i = 0; i<num_of_network_interfaces; i++){
         network_interface& current_if = interface_array[i];
         printf("Interface: %s\n", current_if.name);
         printf("Index: %d\n", current_if.index);
         std::cout<<current_if.addr_str<<"\n";
-    }
+    } */
 
     return 0;
 }
