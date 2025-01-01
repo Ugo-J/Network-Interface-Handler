@@ -54,7 +54,7 @@ void parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len) {
     }
 }
 
-void print_interface_status(unsigned int flags) {
+/* void print_interface_status(unsigned int flags) {
     printf("Status: ");
     if (flags & IFF_UP) printf("UP ");
     if (flags & IFF_RUNNING) printf("RUNNING ");
@@ -63,7 +63,7 @@ void print_interface_status(unsigned int flags) {
     if (flags & IFF_MULTICAST) printf("MULTICAST ");
     if (flags & IFF_PROMISC) printf("PROMISCUOUS ");
     printf("\n");
-}
+} */
 
 bool send_netlink_request(int sock, int type, int seq) {
     char msg_buffer[BUFFER_SIZE];
@@ -96,8 +96,15 @@ void process_link_info(struct nlmsghdr *nlh) {
     current_if.flags = ifi->ifi_flags;
     strncpy(current_if.name, static_cast<const char *>(RTA_DATA(rta)), IF_NAMESIZE - 1);
 
-    // we increment the num_of_network_interfaces
-    num_of_network_interfaces++;
+    // we check if this interface is UP and RUNNING because this system should store the details of only up and running interfaces, we also check that the interface is not the loopback interface, so we only increment the num_of_network_interfaces if these conditions are met
+    if((ifi->ifi_flags & IFF_UP) && (ifi->ifi_flags & IFF_RUNNING) && !(ifi->ifi_flags & IFF_LOOPBACK)){
+    // with this condition we filter only interfaces that are UP, RUNNING and not the loopback interface
+
+        // we increment the num_of_network_interfaces
+        num_of_network_interfaces++;
+    
+    }
+
 }
 
 void process_addr_info(struct nlmsghdr *nlh) {
@@ -112,47 +119,43 @@ void process_addr_info(struct nlmsghdr *nlh) {
             index = i;
     }
 
-    printf("Interface: %s\n", interface_array[index].name);
+    if(index > -1){
+    // this only runs if a valid index was found
 
-    if(ifa->ifa_family == AF_INET){
-    // this is an IPV4 address
+        if(ifa->ifa_family == AF_INET){
+        // this is an IPV4 address
 
-        printf("Address Family: %s\n", "IPv4");
+            // we store the interface address prefix length
+            interface_array[index].ifa_prefixlen = ifa->ifa_prefixlen;
 
-        // we store the interface address prefix length
-        interface_array[index].ifa_prefixlen = ifa->ifa_prefixlen;
+            // we parse the rtattr structure
+            parse_rtattr(interface_array[index].tb, IFA_MAX, rta, rta_len);
 
-        // we parse the rtattr structure
-        parse_rtattr(interface_array[index].tb, IFA_MAX, rta, rta_len);
+            // convert the address structure to a c string and store in the interface structure
+            if (interface_array[index].tb[IFA_ADDRESS]) {
+                
+                inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), interface_array[index].addr_str, sizeof(interface_array[index].addr_str));
 
-        if (interface_array[index].tb[IFA_ADDRESS]) {
+            }
             
-            inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), interface_array[index].addr_str, sizeof(interface_array[index].addr_str));
+        }
+        else{
+        // this is an IPV6 address
 
-            printf("Address: %s/%d\n", interface_array[index].addr_str, ifa->ifa_prefixlen);
+            // we store the interface address prefix length
+            interface_array[index].ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
+
+            // we parse the rtattr structure
+            parse_rtattr(interface_array[index].tb_ipv6, IFA_MAX, rta, rta_len);
+
+            // convert the address structure into a c string and store it in the interface array
+            if (interface_array[index].tb_ipv6[IFA_ADDRESS]) {
+                
+                inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb_ipv6[IFA_ADDRESS]), interface_array[index].addr_str_ipv6, sizeof(interface_array[index].addr_str_ipv6));
+
+            }
 
         }
-        printf("\n");
-    }
-    else{
-    // this is an IPV6 address
-
-        printf("Address Family: %s\n", "IPv6");
-
-        // we store the interface address prefix length
-        interface_array[index].ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
-
-        // we parse the rtattr structure
-        parse_rtattr(interface_array[index].tb_ipv6, IFA_MAX, rta, rta_len);
-
-        if (interface_array[index].tb_ipv6[IFA_ADDRESS]) {
-            
-            inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb_ipv6[IFA_ADDRESS]), interface_array[index].addr_str_ipv6, sizeof(interface_array[index].addr_str_ipv6));
-
-            printf("Address: %s/%d\n", interface_array[index].addr_str_ipv6, ifa->ifa_prefixlen);
-
-        }
-        printf("\n");
 
     }
 }
@@ -180,8 +183,6 @@ int get_network_interfaces() {
         close(sock);
         return -1;
     }
-
-    printf("\n=== Network Interface Details (Netlink) ===\n\n");
 
     // we now query network interface
     if (!send_netlink_request(sock, RTM_GETLINK, 0)) {
@@ -252,13 +253,13 @@ int get_network_interfaces() {
 int main() {
     get_network_interfaces();
 
+    printf("\n=== Network Interface Details (Netlink) ===\n\n");
+
     for(int i = 0; i<num_of_network_interfaces; i++){
         network_interface& current_if = interface_array[i];
         printf("Interface: %s\n", current_if.name);
         printf("Index: %d\n", current_if.index);
-        print_interface_status(current_if.flags);
         std::cout<<current_if.addr_str<<"\n";
-        std::cout<<current_if.addr_str_ipv6<<"\n";
     }
 
     return 0;
