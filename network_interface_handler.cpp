@@ -10,6 +10,20 @@
 #include <linux/rtnetlink.h>
 #include <iostream>
 
+// Structure to store route attributes
+struct route_info {
+    struct in_addr dst_addr;
+    struct in_addr src_addr;
+    struct in_addr gateway;
+    char ifname[IF_NAMESIZE];
+    unsigned int ifindex;
+    unsigned char protocol;
+    unsigned char scope;
+    unsigned char type;
+    unsigned int flags;
+    unsigned int metric;
+};
+
 struct network_interface {
     char name[IF_NAMESIZE];
     int index;
@@ -29,6 +43,8 @@ struct network_interface {
     int ifa_prefixlen;
     // interface address IPV6 prefix length
     int ifa_prefixlen_ipv6;
+
+    // route array
 };
 
 // size of the internal buffer used for the network interface API calls
@@ -160,6 +176,10 @@ void process_addr_info(struct nlmsghdr *nlh) {
     }
 }
 
+void process_route_info(struct nlmsghdr *nlh) {
+
+}
+
 int get_network_interfaces() {
     int sock;
     struct sockaddr_nl nl_addr;
@@ -206,6 +226,9 @@ int get_network_interfaces() {
             else if (nlh->nlmsg_type == RTM_NEWADDR) {
                 process_addr_info(nlh);
             }
+            else if (nlh->nlmsg_type == RTM_NEWROUTE) {
+                process_route_info(nlh);
+            }
 
             nlh = NLMSG_NEXT(nlh, recv_len);
         }
@@ -236,6 +259,43 @@ int get_network_interfaces() {
             }
             else if (nlh->nlmsg_type == RTM_NEWADDR) {
                 process_addr_info(nlh);
+            }
+            else if (nlh->nlmsg_type == RTM_NEWROUTE) {
+                process_route_info(nlh);
+            }
+
+            nlh = NLMSG_NEXT(nlh, recv_len);
+        }
+
+        if (nlh->nlmsg_type == NLMSG_DONE) {
+            break;
+        }
+    }
+
+    // then we query the routing table
+    if (!send_netlink_request(sock, RTM_GETROUTE, 0)) {
+        std::cout<<"Error Sending RTM_GETROUTE Netlink Request\n";
+        close(sock);
+        return -1;
+    }
+
+    // we now read the responses from the route request
+    while ((recv_len = recv(sock, msg_buffer, BUFFER_SIZE, 0)) > 0) {
+        struct nlmsghdr *nlh = (struct nlmsghdr *)msg_buffer;
+        
+        while (NLMSG_OK(nlh, recv_len)) {
+            if (nlh->nlmsg_type == NLMSG_DONE) {
+                break;
+            }
+
+            if (nlh->nlmsg_type == RTM_NEWLINK) {
+                process_link_info(nlh);
+            }
+            else if (nlh->nlmsg_type == RTM_NEWADDR) {
+                process_addr_info(nlh);
+            }
+            else if (nlh->nlmsg_type == RTM_NEWROUTE) {
+                process_route_info(nlh);
             }
 
             nlh = NLMSG_NEXT(nlh, recv_len);
