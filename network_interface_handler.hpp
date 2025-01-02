@@ -14,7 +14,6 @@ void net_interface_handler::print_route_info(struct route_info *route) {
         printf("Gateway: %s\n", gw);
     if (route->src_addr.s_addr != 0)
         printf("Source: %s\n", src);
-    printf("Interface: %s\n", route->ifname);
     
     printf("Protocol: ");
     switch(route->protocol) {
@@ -202,11 +201,6 @@ void net_interface_handler::process_route_info(struct nlmsghdr *nlh) {
         // we increment the num of routes for this interface
         interface_array[index].num_of_routes++;
 
-        // Get interface name from index
-        if_indextoname(route_info.ifindex, route_info.ifname);
-
-        print_route_info(&route_info);
-
     }
 
 }
@@ -338,5 +332,13 @@ int net_interface_handler::get_network_interfaces() {
     }
 
     close(sock);
+
+    // print the routes for this interface
+    for(int i = 0; i<num_of_network_interfaces; i++)
+        for(int j = 0; j<interface_array[i].num_of_routes; j++){
+            printf("Interface: %s\n", interface_array[i].name);
+            print_route_info(&interface_array[i].route_array[j]);
+        }
+
     return 0;
 }

@@ -33,7 +33,7 @@ private:
         struct in_addr dst_addr;
         struct in_addr src_addr;
         struct in_addr gateway;
-        char ifname[IF_NAMESIZE];
+        // char ifname[IF_NAMESIZE];
         unsigned int ifindex;
         unsigned char protocol;
         unsigned char scope;
