@@ -74,6 +74,32 @@ bool net_interface_handler::send_netlink_request(int sock, int type, int seq) {
     return true;
 }
 
+// Function to send route request
+bool net_interface_handler::send_route_request(int sock) {
+    char msg_buffer[BUFFER_SIZE];
+    struct nlmsghdr *nlh = (struct nlmsghdr *)msg_buffer;
+    struct rtmsg *rtm;
+
+    memset(msg_buffer, 0, BUFFER_SIZE);
+
+    nlh->nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+    nlh->nlmsg_type = RTM_GETROUTE;
+    nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+    nlh->nlmsg_seq = 1;
+    nlh->nlmsg_pid = getpid();
+
+    rtm = (rtmsg*)NLMSG_DATA(nlh);
+    rtm->rtm_family = AF_INET;
+    rtm->rtm_table = RT_TABLE_MAIN;
+
+    if (send(sock, nlh, nlh->nlmsg_len, 0) < 0) {
+        perror("Failed to send request");
+        return false;
+    }
+
+    return true;
+}
+
 void net_interface_handler::process_link_info(struct nlmsghdr *nlh) {
     struct ifinfomsg *ifi = static_cast<struct ifinfomsg *>(NLMSG_DATA(nlh));
     struct rtattr *rta = IFLA_RTA(ifi);
@@ -190,8 +216,14 @@ void net_interface_handler::process_route_info(struct nlmsghdr *nlh) {
         if (tb[RTA_OIF])
             route_info.ifindex = *(int *)RTA_DATA(tb[RTA_OIF]);
 
-        if (tb[RTA_METRICS])
+        if (tb[RTA_METRICS]){
             route_info.metric = *(unsigned int *)RTA_DATA(tb[RTA_METRICS]);
+        }
+
+        // this RTA_PRIORITY is used to collect the route metric if it is not returned in the tb[RTA_METRICS] pointer
+        if (tb[RTA_PRIORITY]){
+            route_info.metric = *(unsigned int *)RTA_DATA(tb[RTA_PRIORITY]);
+        }
 
         route_info.protocol = rtm->rtm_protocol;
         route_info.scope = rtm->rtm_scope;
@@ -298,8 +330,8 @@ int net_interface_handler::get_network_interfaces() {
     }
 
     // then we query the routing table
-    if (!send_netlink_request(sock, RTM_GETROUTE, 0)) {
-        std::cout<<"Error Sending RTM_GETROUTE Netlink Request\n";
+    if (!send_route_request(sock)) {
+        std::cout<<"Error Sending Route Request\n";
         close(sock);
         return -1;
     }

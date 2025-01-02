@@ -33,7 +33,6 @@ private:
         struct in_addr dst_addr;
         struct in_addr src_addr;
         struct in_addr gateway;
-        // char ifname[IF_NAMESIZE];
         unsigned int ifindex;
         unsigned char protocol;
         unsigned char scope;
@@ -100,6 +99,7 @@ private:
 private:
     void print_route_info(struct route_info *route);
     bool send_netlink_request(int sock, int type, int seq);
+    bool send_route_request(int sock);
     void process_link_info(struct nlmsghdr *nlh);
     void process_addr_info(struct nlmsghdr *nlh);
     void process_route_info(struct nlmsghdr *nlh);
