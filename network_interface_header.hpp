@@ -9,6 +9,8 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <iostream>
+// for the unshare system call
+#include <sched.h>
 
 /*  // Network interface statuses
     void print_interface_status(unsigned int flags) {
@@ -26,6 +28,39 @@ class net_interface_handler {
 
 public:
     int get_network_interfaces();
+
+public:
+    // function to unshare a thread from the global network namespace. This function is made static
+    static int net_ns_unshare(){
+        int error = unshare(CLONE_NEWNET);
+
+        if(error != 0){
+            if(error == ENOMEM){
+        
+                std::cout<<"Insufficient Memory To Unshare From Network Namespace\n";
+                return error;
+        
+            }
+            else if(error == EINVAL){
+                
+                std::cout<<"Invalid Network Namespace Unsharing Configuration\n";
+                return error;
+                
+            }
+            else if(error == EPERM){
+                
+                std::cout<<"Permission Denied For Unsharing From Global Network Namespace\n";
+                return error;
+                
+            }
+            else{
+                std::cout<<"Unsharing From Global Network Namespace Failed...Retry With Root Privilege\n";
+                return error;
+            }
+        }
+
+        return error;
+    }
 
 private:
     // Structure to store route attributes
