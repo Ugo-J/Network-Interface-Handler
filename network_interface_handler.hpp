@@ -238,6 +238,10 @@ void net_interface_handler::process_route_info(struct nlmsghdr *nlh) {
 }
 
 int net_interface_handler::get_network_interfaces() {
+
+    // we first set the number of network interfaces back to 0
+    num_of_network_interfaces = 0;
+
     int sock;
     struct sockaddr_nl nl_addr;
     char msg_buffer[BUFFER_SIZE];
