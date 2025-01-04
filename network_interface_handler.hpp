@@ -1,4 +1,5 @@
 #include "network_interface_header.hpp"
+#include <sys/ioctl.h>
 
 void net_interface_handler::print_route_info(struct route_info *route) {
     char dst[INET_ADDRSTRLEN];
@@ -370,11 +371,119 @@ int net_interface_handler::get_network_interfaces() {
     close(sock);
 
     // print the routes for this interface
-    for(int i = 0; i<num_of_network_interfaces; i++)
-        for(int j = 0; j<interface_array[i].num_of_routes; j++){
-            printf("Interface: %s\n", interface_array[i].name);
-            print_route_info(&interface_array[i].route_array[j]);
+    for(int i = 0; i<num_of_network_interfaces; i++){
+        std::cout<<interface_array[i].name<<std::endl;
+    }
+
+    return 0;
+}
+
+// Function to move interface to network namespace
+int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_tid) {
+    
+    // Open the target thread's network namespace
+    char ns_path[64];
+    snprintf(ns_path, sizeof(ns_path), "/proc/%d/ns/net", target_tid);
+    int target_ns_fd = open(ns_path, O_RDONLY);
+    if (target_ns_fd < 0) {
+        perror("Failed to open target namespace");
+        return -1;
+    }
+
+    // then we move back to the root namespace from where we would move the network interface
+    int root_ns_fd = open("/proc/1/ns/net", O_RDONLY);  // Save root ns
+
+    // Switch back to root namespace to do the move
+    setns(root_ns_fd, CLONE_NEWNET);
+
+    // Create netlink socket
+    int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sock < 0) {
+        perror("Failed to create socket");
+        return -1;
+    }
+
+    struct sockaddr_nl addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.nl_family = AF_NETLINK;
+    addr.nl_pid = 0;
+
+    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        perror("Failed to bind socket");
+        close(sock);
+        return -1;
+    }
+
+    // Prepare netlink message
+    char msg_buffer[BUFFER_SIZE];
+    struct nlmsghdr *nlh = (struct nlmsghdr *)msg_buffer;
+    struct ifinfomsg *ifm;
+    struct rtattr *rta;
+    int ret = -1;
+
+    memset(msg_buffer, 0, BUFFER_SIZE);
+
+    // Setup netlink header
+    nlh->nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+    nlh->nlmsg_type = RTM_SETLINK;
+    nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+    nlh->nlmsg_seq = 1;
+    nlh->nlmsg_pid = 0;
+
+    // Setup interface info message
+    ifm = (ifinfomsg*)NLMSG_DATA(nlh);
+    ifm->ifi_family = AF_UNSPEC;
+    ifm->ifi_index = if_index;
+
+    // Add network namespace FD attribute
+    rta = (struct rtattr *)((char *)ifm + NLMSG_ALIGN(sizeof(struct ifinfomsg)));
+    rta->rta_type = IFLA_NET_NS_FD;
+    rta->rta_len = RTA_LENGTH(sizeof(int));
+    memcpy(RTA_DATA(rta), &target_ns_fd, sizeof(int));
+    nlh->nlmsg_len = NLMSG_ALIGN(nlh->nlmsg_len) + RTA_LENGTH(sizeof(int));
+
+    // Send message
+    if (send(sock, nlh, nlh->nlmsg_len, 0) < 0) {
+        perror("Failed to send netlink message");
+        close(target_ns_fd);
+        close(sock);
+        return -1;
+    }
+
+    // recv the response
+    char recv_buf[BUFFER_SIZE];
+    ret = recv(sock, recv_buf, BUFFER_SIZE, 0);
+    if (ret < 0) {
+        perror("Failed to get netlink response");
+        close(target_ns_fd);
+        close(sock);
+        return -1;
+    }
+
+    // Process the response properly
+    struct nlmsghdr *resp_nlh = (struct nlmsghdr *)recv_buf;
+    if (resp_nlh->nlmsg_type == NLMSG_ERROR) {
+        struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(resp_nlh);
+        if (err->error == 0) {
+            // Success!
+            std::cout<<"Added Interface Successfully"<<std::endl;
+            ret = 0;
+        } else {
+            fprintf(stderr, "Netlink error: %s\n", strerror(-err->error));
+            ret = -1;
         }
+    }
+
+    // we now switch back to the new namespace created from unshare
+    setns(target_ns_fd, CLONE_NEWNET);
+
+    return 0;
+}
+
+int net_interface_handler::add_network_interface(int if_index){
+    
+    // we move the device with this kernel index into this network namespace
+    move_interface_to_netns(if_index, syscall(SYS_gettid));
 
     return 0;
 }

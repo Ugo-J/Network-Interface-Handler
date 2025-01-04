@@ -9,8 +9,11 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <iostream>
+#include <fcntl.h>
 // for the unshare system call
 #include <sched.h>
+// for the syscall to fetch the kernel thread id
+#include <sys/syscall.h>
 
 /*  // Network interface statuses
     void print_interface_status(unsigned int flags) {
@@ -28,6 +31,7 @@ class net_interface_handler {
 
 public:
     int get_network_interfaces();
+    int add_network_interface(int if_index);
 
 public:
     // function to unshare a thread from the global network namespace. This function is made static
@@ -138,4 +142,5 @@ private:
     void process_link_info(struct nlmsghdr *nlh);
     void process_addr_info(struct nlmsghdr *nlh);
     void process_route_info(struct nlmsghdr *nlh);
+    int move_interface_to_netns(int if_index, pid_t target_tid);
 };

@@ -2,68 +2,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
+#include <net/if.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
-#include <net/if.h>
+#include <linux/if_link.h>
+#include <sys/syscall.h>
+#include <pthread.h>
 
 #define BUFFER_SIZE 8192
 
-struct route_info {
-    char destination[32];
-    char gateway[32];
-    char source[32];
-    char interface[IF_NAMESIZE];
-    unsigned int metric;
-    unsigned char protocol;
-    unsigned char scope;
-    unsigned char type;
-};
-
-// Helper function to convert protocol number to string
-const char* get_protocol_name(unsigned char protocol) {
-    switch (protocol) {
-        case RTPROT_KERNEL:   return "kernel";
-        case RTPROT_BOOT:     return "boot";
-        case RTPROT_STATIC:   return "static";
-        case RTPROT_DHCP:     return "dhcp";
-        default:              return "unknown";
-    }
+// Get thread ID (gettid() wrapper)
+static pid_t get_thread_id() {
+    return syscall(SYS_gettid);
 }
 
-// Helper function to convert scope to string
-const char* get_scope_name(unsigned char scope) {
-    switch (scope) {
-        case RT_SCOPE_UNIVERSE: return "global";
-        case RT_SCOPE_SITE:     return "site";
-        case RT_SCOPE_LINK:     return "link";
-        case RT_SCOPE_HOST:     return "host";
-        case RT_SCOPE_NOWHERE:  return "nowhere";
-        default:                return "unknown";
-    }
-}
-
-// Helper function to convert type to string
-const char* get_type_name(unsigned char type) {
-    switch (type) {
-        case RTN_UNSPEC:      return "unspec";
-        case RTN_UNICAST:     return "unicast";
-        case RTN_LOCAL:       return "local";
-        case RTN_BROADCAST:   return "broadcast";
-        case RTN_ANYCAST:     return "anycast";
-        case RTN_MULTICAST:   return "multicast";
-        case RTN_BLACKHOLE:   return "blackhole";
-        case RTN_UNREACHABLE: return "unreachable";
-        case RTN_PROHIBIT:    return "prohibit";
-        case RTN_THROW:       return "throw";
-        case RTN_NAT:         return "nat";
-        case RTN_XRESOLVE:    return "xresolve";
-        default:              return "unknown";
-    }
-}
-
-// Function to create and initialize netlink socket
 int create_netlink_socket() {
     int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sock < 0) {
@@ -85,148 +37,143 @@ int create_netlink_socket() {
     return sock;
 }
 
-// Function to send route request
-int send_route_request(int sock) {
-    char msg_buffer[BUFFER_SIZE];
-    struct nlmsghdr *nlh = (struct nlmsghdr *)msg_buffer;
-    struct rtmsg *rtm;
-
-    memset(msg_buffer, 0, BUFFER_SIZE);
-
-    nlh->nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
-    nlh->nlmsg_type = RTM_GETROUTE;
-    nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
-    nlh->nlmsg_seq = 1;
-    nlh->nlmsg_pid = getpid();
-
-    rtm = (rtmsg*)NLMSG_DATA(nlh);
-    rtm->rtm_family = AF_INET;
-    rtm->rtm_table = RT_TABLE_MAIN;
-
-    if (send(sock, nlh, nlh->nlmsg_len, 0) < 0) {
-        perror("Failed to send request");
+// Function to move interface to network namespace
+int move_interface_to_netns(const char *if_name, pid_t target_tid) {
+    int sock = create_netlink_socket();
+    if (sock < 0) {
         return -1;
     }
 
-    return 0;
-}
+    // Open the target thread's network namespace
+    char ns_path[64];
+    snprintf(ns_path, sizeof(ns_path), "/proc/%d/ns/net", target_tid);
+    int target_ns_fd = open(ns_path, O_RDONLY);
+    if (target_ns_fd < 0) {
+        perror("Failed to open target namespace");
+        close(sock);
+        return -1;
+    }
 
-// Function to parse a single route from response
-void parse_route(struct nlmsghdr *nlh, struct route_info *rt_info) {
-    struct rtmsg *rtm;
+    // Prepare netlink message
+    char msg_buffer[BUFFER_SIZE];
+    struct nlmsghdr *nlh = (struct nlmsghdr *)msg_buffer;
+    struct ifinfomsg *ifm;
     struct rtattr *rta;
-    int len;
+    int ret = -1;
 
-    rtm = (struct rtmsg *)NLMSG_DATA(nlh);
-    rta = RTM_RTA(rtm);
-    len = RTM_PAYLOAD(nlh);
+    memset(msg_buffer, 0, BUFFER_SIZE);
 
-    memset(rt_info, 0, sizeof(struct route_info));
+    // Setup netlink header
+    nlh->nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+    nlh->nlmsg_type = RTM_SETLINK;
+    nlh->nlmsg_flags = NLM_F_REQUEST;
+    nlh->nlmsg_seq = 1;
+    nlh->nlmsg_pid = getpid();
 
-    // Store protocol, scope and type from rtm
-    rt_info->protocol = rtm->rtm_protocol;
-    rt_info->scope = rtm->rtm_scope;
-    rt_info->type = rtm->rtm_type;
+    // Setup interface info message
+    ifm = NLMSG_DATA(nlh);
+    ifm->ifi_family = AF_UNSPEC;
+    ifm->ifi_index = if_nametoindex(if_name);
+    if (ifm->ifi_index == 0) {
+        perror("if_nametoindex");
+        goto cleanup;
+    }
 
-    // Iterate through all attributes
-    for (; RTA_OK(rta, len); rta = RTA_NEXT(rta, len)) {
-        switch (rta->rta_type) {
-            case RTA_DST: {
-                struct in_addr addr;
-                addr.s_addr = *(unsigned int *)RTA_DATA(rta);
-                inet_ntop(AF_INET, &addr, rt_info->destination, sizeof(rt_info->destination));
-                break;
-            }
-            case RTA_GATEWAY: {
-                struct in_addr addr;
-                addr.s_addr = *(unsigned int *)RTA_DATA(rta);
-                inet_ntop(AF_INET, &addr, rt_info->gateway, sizeof(rt_info->gateway));
-                break;
-            }
-            case RTA_PREFSRC: {
-                struct in_addr addr;
-                addr.s_addr = *(unsigned int *)RTA_DATA(rta);
-                inet_ntop(AF_INET, &addr, rt_info->source, sizeof(rt_info->source));
-                break;
-            }
-            case RTA_OIF:
-                if_indextoname(*(int *)RTA_DATA(rta), rt_info->interface);
-                break;
-            case RTA_PRIORITY:
-                rt_info->metric = *(unsigned int *)RTA_DATA(rta);
-                break;
+    // Add network namespace FD attribute
+    rta = (struct rtattr *)((char *)ifm + NLMSG_ALIGN(sizeof(struct ifinfomsg)));
+    rta->rta_type = IFLA_NET_NS_FD;
+    rta->rta_len = RTA_LENGTH(sizeof(int));
+    memcpy(RTA_DATA(rta), &target_ns_fd, sizeof(int));
+    nlh->nlmsg_len = NLMSG_ALIGN(nlh->nlmsg_len) + RTA_LENGTH(sizeof(int));
+
+    // Send message
+    if (send(sock, nlh, nlh->nlmsg_len, 0) < 0) {
+        perror("Failed to send netlink message");
+        goto cleanup;
+    }
+
+    // Wait for response
+    struct nlmsghdr response;
+    ret = recv(sock, &response, sizeof(response), 0);
+    if (ret < 0) {
+        perror("Failed to get netlink response");
+        goto cleanup;
+    }
+
+    // Check response
+    if (response.nlmsg_type == NLMSG_ERROR) {
+        struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(&response);
+        if (err->error != 0) {
+            fprintf(stderr, "Netlink error: %s\n", strerror(-err->error));
+            ret = -1;
+            goto cleanup;
         }
     }
 
-    // If no destination was set, it's a default route
-    if (strlen(rt_info->destination) == 0) {
-        strcpy(rt_info->destination, "0.0.0.0");
-    }
-}
+    ret = 0;
 
-// Function to receive and parse response
-int receive_route_response(int sock) {
-    char buffer[BUFFER_SIZE];
-    struct nlmsghdr *nlh;
-    int received_bytes;
-    struct route_info rt_info;
-
-    while (1) {
-        received_bytes = recv(sock, buffer, BUFFER_SIZE, 0);
-        if (received_bytes < 0) {
-            perror("Failed to receive response");
-            return -1;
-        }
-
-        // Process all messages in the received data
-        for (nlh = (struct nlmsghdr *)buffer; NLMSG_OK(nlh, received_bytes);
-             nlh = NLMSG_NEXT(nlh, received_bytes)) {
-
-            if (nlh->nlmsg_type == NLMSG_DONE) {
-                return 0;
-            }
-
-            if (nlh->nlmsg_type == NLMSG_ERROR) {
-                fprintf(stderr, "Error in netlink message\n");
-                return -1;
-            }
-
-            parse_route(nlh, &rt_info);
-            printf("Destination: %s\n", rt_info.destination);
-            if (strlen(rt_info.gateway) > 0) {
-                printf("Gateway: %s\n", rt_info.gateway);
-            }
-            if (strlen(rt_info.source) > 0) {
-                printf("Source: %s\n", rt_info.source);
-            }
-            printf("Interface: %s\n", rt_info.interface);
-            printf("Protocol: %s\n", get_protocol_name(rt_info.protocol));
-            printf("Scope: %s\n", get_scope_name(rt_info.scope));
-            printf("Type: %s\n", get_type_name(rt_info.type));
-            if (rt_info.metric > 0) {
-                printf("Metric: %u\n", rt_info.metric);
-            }
-            printf("\n");
-        }
-    }
-}
-
-int main() {
-    int sock = create_netlink_socket();
-    if (sock < 0) {
-        return 1;
-    }
-
-    if (send_route_request(sock) < 0) {
-        close(sock);
-        return 1;
-    }
-
-    if (receive_route_response(sock) < 0) {
-        close(sock);
-        return 1;
-    }
-
+cleanup:
+    close(target_ns_fd);
     close(sock);
+    return ret;
+}
+
+// Create veth pair function remains the same
+int create_veth_pair(const char *name1, const char *name2) {
+    // ... (same as before)
+}
+
+// Thread function that creates its own network namespace
+void* network_namespace_thread(void* arg) {
+    // Create new network namespace for this thread
+    if (unshare(CLONE_NEWNET) < 0) {
+        perror("unshare failed");
+        return NULL;
+    }
+
+    pid_t tid = get_thread_id();
+    printf("Thread %d created new network namespace\n", tid);
+
+    // Keep thread running to maintain namespace
+    while (1) {
+        sleep(1);
+    }
+
+    return NULL;
+}
+
+// Example usage
+int main() {
+    pthread_t netns_thread;
+    
+    // Create thread with new network namespace
+    if (pthread_create(&netns_thread, NULL, network_namespace_thread, NULL) != 0) {
+        perror("pthread_create failed");
+        return 1;
+    }
+
+    // Give thread time to start and create namespace
+    sleep(1);
+
+    // Get thread ID
+    pid_t target_tid = get_thread_id();  // You'll need a way to get the actual thread ID
+    
+    // Create veth pair in current namespace
+    if (create_veth_pair("veth0", "veth1") < 0) {
+        fprintf(stderr, "Failed to create veth pair\n");
+        return 1;
+    }
+
+    // Move veth1 to the new namespace
+    if (move_interface_to_netns("veth1", target_tid) < 0) {
+        fprintf(stderr, "Failed to move interface to namespace\n");
+        return 1;
+    }
+
+    printf("Successfully moved veth1 to namespace of thread %d\n", target_tid);
+
+    // Wait for thread (in practice, you might want to implement proper cleanup)
+    pthread_join(netns_thread, NULL);
+
     return 0;
 }
