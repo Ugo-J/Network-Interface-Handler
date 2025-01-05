@@ -113,8 +113,18 @@ void net_interface_handler::process_link_info(struct nlmsghdr *nlh) {
     current_if.flags = ifi->ifi_flags;
     strncpy(current_if.name, static_cast<const char *>(RTA_DATA(rta)), IF_NAMESIZE - 1);
 
-    // we check if this interface is UP and RUNNING because this system should store the details of only up and running interfaces, we also check that the interface is not the loopback interface, so we only increment the num_of_network_interfaces if these conditions are met
-    if((ifi->ifi_flags & IFF_UP) && (ifi->ifi_flags & IFF_RUNNING) && !(ifi->ifi_flags & IFF_LOOPBACK)){
+    // now we check if this interface is UP and RUNNING because this system should store the details of only up and running interfaces, we also check that the interface is not the loopback interface, so we only increment the num_of_network_interfaces if these conditions are met
+    if((ifi->ifi_flags & IFF_LOOPBACK) && !loopback_interface_set){
+    // here this is the loop back interface and the loop back interface info has not been set so we store the details of this interface in the loopback_interface structure and set the loopback_interface_set variable
+
+        // we don't set it directly to the current_if structure because the current_if structure is a reference
+        loopback_interface = interface_array[num_of_network_interfaces];
+
+        // we set the loopback_interface_set variable to true
+        loopback_interface_set = true;
+
+    }
+    else if((ifi->ifi_flags & IFF_UP) && (ifi->ifi_flags & IFF_RUNNING)){
     // with this condition we filter only interfaces that are UP, RUNNING and not the loopback interface
 
         // we increment the num_of_network_interfaces
@@ -372,7 +382,11 @@ int net_interface_handler::get_network_interfaces() {
 
     // print the routes for this interface
     for(int i = 0; i<num_of_network_interfaces; i++){
-        std::cout<<interface_array[i].name<<std::endl;
+        std::cout<<interface_array[i].name<<'\n';
+        std::cout<<interface_array[i].addr_str<<std::endl;
+        for(int j = 0; j<interface_array[i].num_of_routes; j++){
+            print_route_info(&interface_array[i].route_array[j]);
+        }
     }
 
     return 0;
@@ -391,7 +405,17 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
     }
 
     // then we move back to the root namespace from where we would move the network interface
-    int root_ns_fd = open("/proc/1/ns/net", O_RDONLY);  // Save root ns
+
+    // open the root namespace
+    int root_ns_fd = open("/proc/1/ns/net", O_RDONLY);
+    if (root_ns_fd < 0) {
+        perror("Failed to open root namespace");
+
+        // we close the target namespace file
+        close(target_ns_fd);
+
+        return -1;
+    }
 
     // Switch back to root namespace to do the move
     setns(root_ns_fd, CLONE_NEWNET);
@@ -400,6 +424,8 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
     int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sock < 0) {
         perror("Failed to create socket");
+        close(root_ns_fd);
+        close(target_ns_fd);
         return -1;
     }
 
@@ -410,6 +436,8 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
 
     if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("Failed to bind socket");
+        close(root_ns_fd);
+        close(target_ns_fd);
         close(sock);
         return -1;
     }
@@ -445,6 +473,7 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
     // Send message
     if (send(sock, nlh, nlh->nlmsg_len, 0) < 0) {
         perror("Failed to send netlink message");
+        close(root_ns_fd);
         close(target_ns_fd);
         close(sock);
         return -1;
@@ -455,7 +484,10 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
     ret = recv(sock, recv_buf, BUFFER_SIZE, 0);
     if (ret < 0) {
         perror("Failed to get netlink response");
+        // we close the files we have open
+        close(root_ns_fd);
         close(target_ns_fd);
+        // we close the netlink socket
         close(sock);
         return -1;
     }
@@ -470,6 +502,9 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
             ret = 0;
         } else {
             fprintf(stderr, "Netlink error: %s\n", strerror(-err->error));
+            // we close the files we have open
+            close(root_ns_fd);
+            close(target_ns_fd);
             ret = -1;
         }
     }
@@ -477,7 +512,20 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
     // we now switch back to the new namespace created from unshare
     setns(target_ns_fd, CLONE_NEWNET);
 
-    return 0;
+    // we close the files we have open
+    close(root_ns_fd);
+    close(target_ns_fd);
+
+    // now we set up the network interface address for this namespace including the loopback address
+
+
+    // we setup the routing tables for the network interface
+
+
+    // we close the netlink socket
+    close(sock);
+
+    return ret;
 }
 
 int net_interface_handler::add_network_interface(int if_index){
