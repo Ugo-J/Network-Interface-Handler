@@ -682,16 +682,32 @@ int net_interface_handler::configure_interface_address(int if_index) {
         return -1;
     }
 
+    struct sockaddr_nl local;
+    memset(&local, 0, sizeof(local));
+    local.nl_family = AF_NETLINK;
+    local.nl_pid = getpid();
+    
+    if (bind(sock, (struct sockaddr *)&local, sizeof(local)) < 0) {
+        perror("Failed to bind netlink socket");
+        close(sock);
+        return -1;
+    }
+
     struct {
         struct nlmsghdr nlh;
         struct ifaddrmsg ifa;
         char buf[256];
     } req;
 
+    // Initialize the request structure
+    req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
     req.nlh.nlmsg_type = RTM_NEWADDR;
-    req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+    req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
+    req.nlh.nlmsg_seq = 1;
+    req.nlh.nlmsg_pid = 0;  // kernel
+
     req.ifa.ifa_family = AF_INET;
-    req.ifa.ifa_prefixlen = 24;  // for a /24 network
+    req.ifa.ifa_prefixlen = 24;
     req.ifa.ifa_index = if_index;
     req.ifa.ifa_scope = RT_SCOPE_UNIVERSE;
 
@@ -699,8 +715,11 @@ int net_interface_handler::configure_interface_address(int if_index) {
     struct rtattr *rta;
     rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(sizeof(req.nlh)) + NLMSG_ALIGN(sizeof(req.ifa)));
     rta->rta_type = IFA_LOCAL;
-    rta->rta_len = RTA_LENGTH(4);  // IPv4 address is 4 bytes
-    inet_pton(AF_INET, "192.168.1.2", RTA_DATA(rta));  // replace with your IP
+    rta->rta_len = RTA_LENGTH(4);
+    inet_pton(AF_INET, "192.168.2.2", RTA_DATA(rta));
+
+    // Update length after adding attribute
+    req.nlh.nlmsg_len = NLMSG_ALIGN(req.nlh.nlmsg_len) + RTA_LENGTH(4);
 
     // Setup for sending
     struct sockaddr_nl sa;
@@ -755,7 +774,7 @@ int net_interface_handler::configure_interface_address(int if_index) {
             return -1;
         }
         else{
-            std::cout<<"Successfully Brought Up Loopback Interface"<<std::endl;
+            std::cout<<"Successfully Changed IP Address Of Interface"<<std::endl;
         }
     }
 
