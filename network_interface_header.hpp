@@ -150,4 +150,7 @@ private:
     void process_addr_info(struct nlmsghdr *nlh);
     void process_route_info(struct nlmsghdr *nlh);
     int move_interface_to_netns(int if_index, pid_t target_tid);
+    int bring_up_loopback(); // function for bringing up the loopback interface
+    int configure_loopback_address();
+    int configure_interface_address();
 };
