@@ -337,6 +337,11 @@ int net_interface_handler::get_network_interfaces() {
     // we first set the number of network interfaces back to 0
     num_of_network_interfaces = 0;
 
+    // we set the loopback_interface_set check variable back to false
+    loopback_interface_set = false;
+    // we set the loopback_interface num of routes back to 0
+    loopback_interface.num_of_routes = 0;
+
     int sock;
     struct sockaddr_nl nl_addr;
     char msg_buffer[BUFFER_SIZE];
@@ -670,8 +675,93 @@ int net_interface_handler::configure_loopback_address() {
     return 0;
 }
 
-int net_interface_handler::configure_interface_address() {
-    
+int net_interface_handler::configure_interface_address(int if_index) {
+    int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sock < 0) {
+        perror("Failed to open netlink socket");
+        return -1;
+    }
+
+    struct {
+        struct nlmsghdr nlh;
+        struct ifaddrmsg ifa;
+        char buf[256];
+    } req;
+
+    req.nlh.nlmsg_type = RTM_NEWADDR;
+    req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+    req.ifa.ifa_family = AF_INET;
+    req.ifa.ifa_prefixlen = 24;  // for a /24 network
+    req.ifa.ifa_index = if_index;
+    req.ifa.ifa_scope = RT_SCOPE_UNIVERSE;
+
+    // Add the IP address attribute
+    struct rtattr *rta;
+    rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(sizeof(req.nlh)) + NLMSG_ALIGN(sizeof(req.ifa)));
+    rta->rta_type = IFA_LOCAL;
+    rta->rta_len = RTA_LENGTH(4);  // IPv4 address is 4 bytes
+    inet_pton(AF_INET, "192.168.1.2", RTA_DATA(rta));  // replace with your IP
+
+    // Setup for sending
+    struct sockaddr_nl sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nl_family = AF_NETLINK;
+
+    struct iovec iov;
+    iov.iov_base = &req;
+    iov.iov_len = req.nlh.nlmsg_len;
+
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_name = &sa;
+    msg.msg_namelen = sizeof(sa);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+
+    // Send the request
+    if (sendmsg(sock, &msg, 0) < 0) {
+        perror("Failed to send netlink message");
+        close(sock);
+        return -1;
+    }
+
+    // Receive response
+    char buf[4096];
+    struct iovec iov_recv;
+    iov_recv.iov_base = buf;
+    iov_recv.iov_len = sizeof(buf);
+
+    struct msghdr msg_recv;
+    memset(&msg_recv, 0, sizeof(msg_recv));
+    msg_recv.msg_name = &sa;
+    msg_recv.msg_namelen = sizeof(sa);
+    msg_recv.msg_iov = &iov_recv;
+    msg_recv.msg_iovlen = 1;
+
+    int ret = recvmsg(sock, &msg_recv, 0);
+    if (ret < 0) {
+        perror("Failed to receive netlink message");
+        close(sock);
+        return -1;
+    }
+
+    // Check response
+    struct nlmsghdr *nlh_recv = (struct nlmsghdr *)buf;
+    if (nlh_recv->nlmsg_type == NLMSG_ERROR) {
+        struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(nlh_recv);
+        if (err->error < 0) {
+            fprintf(stderr, "Netlink error: %s\n", strerror(-err->error));
+            close(sock);
+            return -1;
+        }
+        else{
+            std::cout<<"Successfully Brought Up Loopback Interface"<<std::endl;
+        }
+    }
+
+    close(sock);
+
+    return 0;
 }
 
 // Function to move interface to network namespace
@@ -817,6 +907,8 @@ int net_interface_handler::add_network_interface(int if_index){
     
     // we move the device with this kernel index into this network namespace
     move_interface_to_netns(if_index, syscall(SYS_gettid));
+
+    configure_interface_address(3);
 
     return 0;
 }
