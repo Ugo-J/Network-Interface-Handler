@@ -140,30 +140,22 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
     int rta_len = IFA_PAYLOAD(nlh);
     int index = -1;
 
-    // we loop through the entered network interfaces to find the index of this network interface in the interface array
-    for(int i = 0; i<num_of_network_interfaces; i++){
-        if(interface_array[i].index == ifa->ifa_index){
-            index = i;
-            break;
-        }
-    }
-
-    if(index > -1){
-    // this only runs if a valid index was found
-
+    // we first check if this is the loopback interface - we do not add any test boolean variable like loopback_addr_set because the whole address information about the loopback interface woud be sent in one recv call along with the address info about other network interfaces too
+    if(ifa->ifa_index == loopback_interface.index){
+    // getting here this is the loopback interface
         if(ifa->ifa_family == AF_INET){
         // this is an IPV4 address
 
             // we store the interface address prefix length
-            interface_array[index].ifa_prefixlen = ifa->ifa_prefixlen;
+            loopback_interface.ifa_prefixlen = ifa->ifa_prefixlen;
 
             // we parse the rtattr structure
-            parse_rtattr(interface_array[index].tb, IFA_MAX, rta, rta_len);
+            parse_rtattr(loopback_interface.tb, IFA_MAX, rta, rta_len);
 
             // convert the address structure to a c string and store in the interface structure
-            if (interface_array[index].tb[IFA_ADDRESS]) {
+            if (loopback_interface.tb[IFA_ADDRESS]) {
                 
-                inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), interface_array[index].addr_str, sizeof(interface_array[index].addr_str));
+                inet_ntop(ifa->ifa_family, RTA_DATA(loopback_interface.tb[IFA_ADDRESS]), loopback_interface.addr_str, sizeof(loopback_interface.addr_str));
 
             }
             
@@ -172,15 +164,66 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
         // this is an IPV6 address
 
             // we store the interface address prefix length
-            interface_array[index].ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
+            loopback_interface.ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
 
             // we parse the rtattr structure
-            parse_rtattr(interface_array[index].tb_ipv6, IFA_MAX, rta, rta_len);
+            parse_rtattr(loopback_interface.tb_ipv6, IFA_MAX, rta, rta_len);
 
             // convert the address structure into a c string and store it in the interface array
-            if (interface_array[index].tb_ipv6[IFA_ADDRESS]) {
+            if (loopback_interface.tb_ipv6[IFA_ADDRESS]) {
                 
-                inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb_ipv6[IFA_ADDRESS]), interface_array[index].addr_str_ipv6, sizeof(interface_array[index].addr_str_ipv6));
+                inet_ntop(ifa->ifa_family, RTA_DATA(loopback_interface.tb_ipv6[IFA_ADDRESS]), loopback_interface.addr_str_ipv6, sizeof(loopback_interface.addr_str_ipv6));
+
+            }
+
+        }
+    }
+    else{
+    // getting here this is not the loopback interface so we search to find if it is stored in the interface array
+
+        // we loop through the entered network interfaces to find the index of this network interface in the interface array
+        for(int i = 0; i<num_of_network_interfaces; i++){
+            if(interface_array[i].index == ifa->ifa_index){
+                index = i;
+                break;
+            }
+        }
+
+        if(index > -1){
+        // this only runs if a valid index was found
+
+            if(ifa->ifa_family == AF_INET){
+            // this is an IPV4 address
+
+                // we store the interface address prefix length
+                interface_array[index].ifa_prefixlen = ifa->ifa_prefixlen;
+
+                // we parse the rtattr structure
+                parse_rtattr(interface_array[index].tb, IFA_MAX, rta, rta_len);
+
+                // convert the address structure to a c string and store in the interface structure
+                if (interface_array[index].tb[IFA_ADDRESS]) {
+                    
+                    inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), interface_array[index].addr_str, sizeof(interface_array[index].addr_str));
+
+                }
+                
+            }
+            else{
+            // this is an IPV6 address
+
+                // we store the interface address prefix length
+                interface_array[index].ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
+
+                // we parse the rtattr structure
+                parse_rtattr(interface_array[index].tb_ipv6, IFA_MAX, rta, rta_len);
+
+                // convert the address structure into a c string and store it in the interface array
+                if (interface_array[index].tb_ipv6[IFA_ADDRESS]) {
+                    
+                    inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb_ipv6[IFA_ADDRESS]), interface_array[index].addr_str_ipv6, sizeof(interface_array[index].addr_str_ipv6));
+
+                }
 
             }
 
@@ -195,23 +238,14 @@ void net_interface_handler::process_route_info(struct nlmsghdr *nlh) {
     rtm = (struct rtmsg *)NLMSG_DATA(nlh);
     struct rtattr *tb[RTA_MAX + 1];
     parse_rtattr(tb, RTA_MAX, RTM_RTA(rtm), RTM_PAYLOAD(nlh));
-
-    // we first fetch the interace index
     int index = -1;
 
-    // now we check if the index with this route is in the interface array
-    for(int i = 0; i<num_of_network_interfaces; i++){
-        if(interface_array[i].index == *(int *)RTA_DATA(tb[RTA_OIF])){
-            index = i;
-            break;
-        }
-    }
+    // we first check if this is the loopback interface
+    if(*(int *)RTA_DATA(tb[RTA_OIF]) == loopback_interface.index){
+    // getting here this is the loopback interface
 
-    // this part only runs if the interface with this route was found in the interface array
-    if(index > -1){
-
-        // we create a local reference to the next route entry in the route array at this index of the interface array
-        struct route_info& route_info = interface_array[index].route_array[interface_array[index].num_of_routes];
+        // we create a local reference to the next route entry in the route array of this interface
+        struct route_info& route_info = loopback_interface.route_array[loopback_interface.num_of_routes];
         memset(&route_info, 0, sizeof(route_info));
 
         // Get route attributes
@@ -242,7 +276,58 @@ void net_interface_handler::process_route_info(struct nlmsghdr *nlh) {
         route_info.flags = rtm->rtm_flags;
 
         // we increment the num of routes for this interface
-        interface_array[index].num_of_routes++;
+        loopback_interface.num_of_routes++;
+
+    }
+    else{
+    // getting here this is not the loopback interface so we check if this interface is in the interface array
+
+        // now we check if the index with this route is in the interface array
+        for(int i = 0; i<num_of_network_interfaces; i++){
+            if(interface_array[i].index == *(int *)RTA_DATA(tb[RTA_OIF])){
+                index = i;
+                break;
+            }
+        }
+
+        // this part only runs if the interface with this route was found in the interface array
+        if(index > -1){
+
+            // we create a local reference to the next route entry in the route array at this index of the interface array
+            struct route_info& route_info = interface_array[index].route_array[interface_array[index].num_of_routes];
+            memset(&route_info, 0, sizeof(route_info));
+
+            // Get route attributes
+            if (tb[RTA_DST])
+                memcpy(&route_info.dst_addr, RTA_DATA(tb[RTA_DST]), sizeof(route_info.dst_addr));
+
+            if (tb[RTA_GATEWAY])
+                memcpy(&route_info.gateway, RTA_DATA(tb[RTA_GATEWAY]), sizeof(route_info.gateway));
+
+            if (tb[RTA_PREFSRC])
+                memcpy(&route_info.src_addr, RTA_DATA(tb[RTA_PREFSRC]), sizeof(route_info.src_addr));
+
+            if (tb[RTA_OIF])
+                route_info.ifindex = *(int *)RTA_DATA(tb[RTA_OIF]);
+
+            if (tb[RTA_METRICS]){
+                route_info.metric = *(unsigned int *)RTA_DATA(tb[RTA_METRICS]);
+            }
+
+            // this RTA_PRIORITY is used to collect the route metric if it is not returned in the tb[RTA_METRICS] pointer
+            if (tb[RTA_PRIORITY]){
+                route_info.metric = *(unsigned int *)RTA_DATA(tb[RTA_PRIORITY]);
+            }
+
+            route_info.protocol = rtm->rtm_protocol;
+            route_info.scope = rtm->rtm_scope;
+            route_info.type = rtm->rtm_type;
+            route_info.flags = rtm->rtm_flags;
+
+            // we increment the num of routes for this interface
+            interface_array[index].num_of_routes++;
+
+        }
 
     }
 
@@ -387,6 +472,14 @@ int net_interface_handler::get_network_interfaces() {
         for(int j = 0; j<interface_array[i].num_of_routes; j++){
             print_route_info(&interface_array[i].route_array[j]);
         }
+
+    }
+
+    // print the loopback interface details
+    std::cout<<loopback_interface.name<<'\n';
+    std::cout<<loopback_interface.addr_str<<std::endl;
+    for(int j = 0; j<loopback_interface.num_of_routes; j++){
+        print_route_info(&loopback_interface.route_array[j]);
     }
 
     return 0;
