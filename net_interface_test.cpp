@@ -8,8 +8,8 @@ int main() {
     if(net_interface_handler::net_ns_unshare())
         return 1;
 
-    std::cout<<"Adding Interface "<<1<<" To Namespace\n";
-    handle.add_network_interface(1);
+    std::cout<<"Adding Interface "<<0<<" To Namespace\n";
+    handle.add_network_interface(0);
 
     std::cout<<"Interface List After Adding To This Namespace\n";
     handle.get_network_interfaces();

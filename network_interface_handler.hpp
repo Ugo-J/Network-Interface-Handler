@@ -1079,10 +1079,14 @@ int net_interface_handler::move_interface_to_netns(int index, pid_t target_tid) 
             ret = 0;
         } else {
             fprintf(stderr, "Netlink error: %s\n", strerror(-err->error));
+
+            // we switch back to the original namespace from the root namespace
+            setns(target_ns_fd, CLONE_NEWNET);
+
             // we close the files we have open
             close(root_ns_fd);
             close(target_ns_fd);
-            ret = -1;
+            return -1;
         }
     }
 
@@ -1099,7 +1103,7 @@ int net_interface_handler::move_interface_to_netns(int index, pid_t target_tid) 
     bring_up_loopback();
 
     // bring up interface in new namespace - we pass the interface device index as parameter
-    bring_up_interface(interface_array[index].index);
+    // bring_up_interface(interface_array[index].index);
 
     // we configure the address for the network interface
     configure_interface_address(index);
