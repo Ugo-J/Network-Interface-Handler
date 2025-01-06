@@ -85,6 +85,7 @@ private:
     struct network_interface {
         char name[IF_NAMESIZE];
         int index;
+        unsigned char scope;
         unsigned int flags;
         struct in_addr ip_addr;
         struct in_addr netmask;
@@ -163,6 +164,7 @@ private:
     int configure_loopback_address();
     int configure_interface_address(int if_index);
     // functions to add routes
-    int add_direct_route(struct in_addr& dst, int if_index, int prefixlen, int metric = 0);
-    int add_gateway_route(struct in_addr& dst, struct in_addr& gw, int if_index, int prefixlen, int metric = 0);
+    int add_interface_routes(int index);
+    int add_direct_route(struct in_addr& dst, int if_index, unsigned char protocol, unsigned char scope, unsigned char type, int prefixlen, int metric = 0);
+    int add_gateway_route(struct in_addr& dst, struct in_addr& gw, int if_index, unsigned char protocol, unsigned char scope, unsigned char type, int prefixlen, int metric = 0);
 };

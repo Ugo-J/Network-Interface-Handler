@@ -148,6 +148,9 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
             // we store the interface address prefix length
             loopback_interface.ifa_prefixlen = ifa->ifa_prefixlen;
 
+            // we store the interface address scope
+            interface_array[index].scope = ifa->ifa_scope;
+
             // we parse the rtattr structure
             parse_rtattr(loopback_interface.tb, IFA_MAX, rta, rta_len);
 
@@ -196,6 +199,9 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
 
                 // we store the interface address prefix length
                 interface_array[index].ifa_prefixlen = ifa->ifa_prefixlen;
+
+                // we store the interface address scope
+                interface_array[index].scope = ifa->ifa_scope;
 
                 // we parse the rtattr structure
                 parse_rtattr(interface_array[index].tb, IFA_MAX, rta, rta_len);
@@ -670,7 +676,7 @@ int net_interface_handler::configure_loopback_address() {
     return 0;
 }
 
-int net_interface_handler::configure_interface_address(int if_index) {
+int net_interface_handler::configure_interface_address(int index) {
     int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sock < 0) {
         perror("Failed to open netlink socket");
@@ -680,7 +686,7 @@ int net_interface_handler::configure_interface_address(int if_index) {
     struct sockaddr_nl local;
     memset(&local, 0, sizeof(local));
     local.nl_family = AF_NETLINK;
-    local.nl_pid = getpid();
+    local.nl_pid = 0;
     
     if (bind(sock, (struct sockaddr *)&local, sizeof(local)) < 0) {
         perror("Failed to bind netlink socket");
@@ -699,19 +705,19 @@ int net_interface_handler::configure_interface_address(int if_index) {
     req.nlh.nlmsg_type = RTM_NEWADDR;
     req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_ACK;
     req.nlh.nlmsg_seq = 1;
-    req.nlh.nlmsg_pid = 0;  // kernel
+    req.nlh.nlmsg_pid = 0;
 
     req.ifa.ifa_family = AF_INET;
-    req.ifa.ifa_prefixlen = 24;
-    req.ifa.ifa_index = if_index;
-    req.ifa.ifa_scope = RT_SCOPE_UNIVERSE;
+    req.ifa.ifa_prefixlen = interface_array[index].ifa_prefixlen;
+    req.ifa.ifa_index = interface_array[index].index;
+    req.ifa.ifa_scope = interface_array[index].scope;
 
     // Add the IP address attribute
     struct rtattr *rta;
     rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(sizeof(req.nlh)) + NLMSG_ALIGN(sizeof(req.ifa)));
     rta->rta_type = IFA_LOCAL;
     rta->rta_len = RTA_LENGTH(4);
-    inet_pton(AF_INET, "192.168.2.2", RTA_DATA(rta));
+    inet_pton(AF_INET, interface_array[index].addr_str, RTA_DATA(rta));
 
     // Update length after adding attribute
     req.nlh.nlmsg_len = NLMSG_ALIGN(req.nlh.nlmsg_len) + RTA_LENGTH(4);
@@ -769,7 +775,7 @@ int net_interface_handler::configure_interface_address(int if_index) {
             return -1;
         }
         else{
-            std::cout<<"Successfully Changed IP Address Of Interface"<<std::endl;
+            std::cout<<"Successfully Configured IP Address Of Interface"<<std::endl;
         }
     }
 
@@ -779,7 +785,7 @@ int net_interface_handler::configure_interface_address(int if_index) {
 }
 
 // functions to add routes
-int net_interface_handler::add_direct_route(struct in_addr& dst, int if_index, int prefixlen, int metric){
+int net_interface_handler::add_direct_route(struct in_addr& dst, int if_index, unsigned char protocol, unsigned char scope, unsigned char type, int prefixlen, int metric){
 
     struct {
         struct nlmsghdr nh;
@@ -795,9 +801,9 @@ int net_interface_handler::add_direct_route(struct in_addr& dst, int if_index, i
     // Setup route message
     req.rtm.rtm_family = AF_INET;
     req.rtm.rtm_table = RT_TABLE_MAIN;
-    req.rtm.rtm_protocol = RTPROT_BOOT;
-    req.rtm.rtm_scope = RT_SCOPE_LINK;     // Important: scope is LINK for direct routes
-    req.rtm.rtm_type = RTN_UNICAST;
+    req.rtm.rtm_protocol = protocol;
+    req.rtm.rtm_scope = scope;     // Important: scope is LINK for direct routes
+    req.rtm.rtm_type = type;
     req.rtm.rtm_dst_len = prefixlen;
 
     // Add destination address
@@ -826,7 +832,7 @@ int net_interface_handler::add_direct_route(struct in_addr& dst, int if_index, i
     return 0;
 }
 
-int net_interface_handler::add_gateway_route(struct in_addr& dst, struct in_addr& gw, int if_index, int prefixlen, int metric){
+int net_interface_handler::add_gateway_route(struct in_addr& dst, struct in_addr& gw, int if_index, unsigned char protocol, unsigned char scope, unsigned char type, int prefixlen, int metric){
 
     struct {
         struct nlmsghdr nh;
@@ -842,9 +848,9 @@ int net_interface_handler::add_gateway_route(struct in_addr& dst, struct in_addr
     // Setup route message
     req.rtm.rtm_family = AF_INET;
     req.rtm.rtm_table = RT_TABLE_MAIN;
-    req.rtm.rtm_protocol = RTPROT_BOOT;
-    req.rtm.rtm_scope = RT_SCOPE_UNIVERSE;  // Important: scope is UNIVERSE for gateway routes
-    req.rtm.rtm_type = RTN_UNICAST;
+    req.rtm.rtm_protocol = protocol;
+    req.rtm.rtm_scope = scope;  // Important: scope is UNIVERSE for gateway routes
+    req.rtm.rtm_type = type;
     req.rtm.rtm_dst_len = prefixlen;
 
     // Add destination network attribute
@@ -878,7 +884,7 @@ int net_interface_handler::add_gateway_route(struct in_addr& dst, struct in_addr
 }
 
 // Function to move interface to network namespace
-int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_tid) {
+int net_interface_handler::move_interface_to_netns(int index, pid_t target_tid) {
     
     // Open the target thread's network namespace
     char ns_path[64];
@@ -889,7 +895,7 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
         return -1;
     }
 
-    // then we move back to the root namespace from where we would move the network interface
+    // we move back to the root namespace from where we would move the network interface
 
     // open the root namespace
     int root_ns_fd = open("/proc/1/ns/net", O_RDONLY);
@@ -944,7 +950,7 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
     // Setup interface info message
     ifm = (ifinfomsg*)NLMSG_DATA(nlh);
     ifm->ifi_family = AF_UNSPEC;
-    ifm->ifi_index = if_index;
+    ifm->ifi_index = interface_array[index].index;
 
     // Add network namespace FD attribute
     rta = (struct rtattr *)((char *)ifm + NLMSG_ALIGN(sizeof(struct ifinfomsg)));
@@ -992,7 +998,7 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
         }
     }
 
-    // we now switch back to the new namespace created from unshare
+    // we now switch back to the original namespace from the root namespace
     setns(target_ns_fd, CLONE_NEWNET);
 
     // we close the files we have open
@@ -1004,10 +1010,11 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
     // we bring up the loopback interface for this namespace
     bring_up_loopback();
 
-    // we add direct routes
-    add_direct_route(interface_array[0].route_array[0].dst_addr, 3, 24);
+    // we configure the address for the network interface
+    configure_interface_address(index);
 
     // we setup the routing tables for the network interface
+    add_interface_routes(index);
 
     // we close the netlink socket
     close(sock);
@@ -1015,12 +1022,47 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
     return ret;
 }
 
-int net_interface_handler::add_network_interface(int if_index){
+int net_interface_handler::add_network_interface(int index){
     
-    // we move the device with this kernel index into this network namespace
-    move_interface_to_netns(if_index, syscall(SYS_gettid));
+    if(!(index < num_of_network_interfaces)){
+    // getting here would mean that the supplied index does not correspond to any collected network interface so the system returns -1
 
-    configure_interface_address(3);
+        return -1;
+    }
+    else{
+
+        // we move the device with this kernel index into this network namespace
+        move_interface_to_netns(index, syscall(SYS_gettid));
+    }
+
+    return 0;
+}
+
+int net_interface_handler::add_interface_routes(int index){
+// this function takes as parameter an index to an interface in the interface array from where the route table entries would be copied
+
+    // we use this pointer to keep track of the route being parsed
+    route_info* p_route_info = NULL;
+
+    for(int i=0; i<interface_array[index].num_of_routes; i++){
+
+        p_route_info = &interface_array[index].route_array[i];
+
+        // we first check if there is a gateway address in the route entry, if there is then this is a gateway route else this is a direct route
+        if(p_route_info->gateway.s_addr != 0){
+        // this is a gateway address
+
+            add_gateway_route(p_route_info->dst_addr, p_route_info->gateway, p_route_info->ifindex, p_route_info->protocol, p_route_info->scope, p_route_info->type, p_route_info->prefixlen, p_route_info->metric);
+
+        }
+        else{
+        // this is not a gateway address so we call the add direct route function
+
+            add_direct_route(p_route_info->dst_addr, p_route_info->ifindex, p_route_info->protocol, p_route_info->scope, p_route_info->type, p_route_info->prefixlen, p_route_info->metric);
+
+        }
+
+    }
 
     return 0;
 }
