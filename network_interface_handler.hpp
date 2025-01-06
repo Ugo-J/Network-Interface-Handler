@@ -575,6 +575,91 @@ int net_interface_handler::bring_up_loopback() {
     return 0;
 }
 
+int net_interface_handler::bring_up_interface(int if_index) {
+    int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sock < 0) {
+        perror("Failed to open netlink socket");
+        return -1;
+    }
+
+    // Create request structure
+    struct {
+        struct nlmsghdr nlh;
+        struct ifinfomsg ifm;
+    } req;
+    
+    // Initialize the structure members
+    req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+    req.nlh.nlmsg_type = RTM_NEWLINK;
+    req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+    req.nlh.nlmsg_seq = 1;
+    req.nlh.nlmsg_pid = 0;  // kernel
+    req.ifm.ifi_family = AF_UNSPEC;
+    req.ifm.ifi_index = if_index;  // loopback is always index 1
+    req.ifm.ifi_flags = IFF_UP;
+    req.ifm.ifi_change = IFF_UP;  // Only change UP flag
+
+    // Setup for sending
+    struct sockaddr_nl sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nl_family = AF_NETLINK;
+
+    struct iovec iov;
+    iov.iov_base = &req;
+    iov.iov_len = req.nlh.nlmsg_len;
+
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_name = &sa;
+    msg.msg_namelen = sizeof(sa);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+
+    // Send the request
+    if (sendmsg(sock, &msg, 0) < 0) {
+        perror("Failed to send netlink message");
+        close(sock);
+        return -1;
+    }
+
+    // Receive response
+    char buf[4096];
+    struct iovec iov_recv;
+    iov_recv.iov_base = buf;
+    iov_recv.iov_len = sizeof(buf);
+
+    struct msghdr msg_recv;
+    memset(&msg_recv, 0, sizeof(msg_recv));
+    msg_recv.msg_name = &sa;
+    msg_recv.msg_namelen = sizeof(sa);
+    msg_recv.msg_iov = &iov_recv;
+    msg_recv.msg_iovlen = 1;
+
+    int ret = recvmsg(sock, &msg_recv, 0);
+    if (ret < 0) {
+        perror("Failed to receive netlink message");
+        close(sock);
+        return -1;
+    }
+
+    // Check response
+    struct nlmsghdr *nlh_recv = (struct nlmsghdr *)buf;
+    if (nlh_recv->nlmsg_type == NLMSG_ERROR) {
+        struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(nlh_recv);
+        if (err->error < 0) {
+            fprintf(stderr, "Netlink error: %s\n", strerror(-err->error));
+            close(sock);
+            return -1;
+        }
+        else{
+            std::cout<<"Successfully Brought Up Interface "<<if_index<<std::endl;
+        }
+    }
+
+    close(sock);
+    return 0;
+}
+
 int net_interface_handler::configure_loopback_address() {
     int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sock < 0) {
@@ -1009,6 +1094,9 @@ int net_interface_handler::move_interface_to_netns(int index, pid_t target_tid) 
 
     // we bring up the loopback interface for this namespace
     bring_up_loopback();
+
+    // bring up interface in new namespace - we pass the interface device index as parameter
+    bring_up_interface(interface_array[index].index);
 
     // we configure the address for the network interface
     configure_interface_address(index);

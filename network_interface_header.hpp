@@ -162,6 +162,7 @@ private:
     int move_interface_to_netns(int if_index, pid_t target_tid);
     int bring_up_loopback(); // function for bringing up the loopback interface
     int configure_loopback_address();
+    int bring_up_interface(int if_index); // function for bringing up interface
     int configure_interface_address(int if_index);
     // functions to add routes
     int add_interface_routes(int index);
