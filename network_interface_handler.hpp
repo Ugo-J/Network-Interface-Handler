@@ -123,12 +123,15 @@ void net_interface_handler::process_link_info(struct nlmsghdr *nlh) {
         loopback_interface_set = true;
 
     }
-    else if(1/*(ifi->ifi_flags & IFF_UP) && (ifi->ifi_flags & IFF_RUNNING)*/){
+    else if((ifi->ifi_flags & IFF_UP) && (ifi->ifi_flags & IFF_RUNNING)){
     // with this condition we filter only interfaces that are UP, RUNNING and not the loopback interface
 
         // we increment the num_of_network_interfaces
         num_of_network_interfaces++;
     
+    }
+    else{
+        std::cout<<"Interface "<<current_if.index<<" Not UP And RUNNING"<<std::endl;
     }
 
 }
@@ -1096,13 +1099,13 @@ int net_interface_handler::move_interface_to_netns(int index, pid_t target_tid) 
     bring_up_loopback();
 
     // bring up interface in new namespace - we pass the interface device index as parameter
-    // bring_up_interface(interface_array[index].index);
+    bring_up_interface(interface_array[index].index);
 
     // we configure the address for the network interface
-    // configure_interface_address(index);
+    configure_interface_address(index);
 
     // we setup the routing tables for the network interface
-    // add_interface_routes(index);
+    add_interface_routes(index);
 
     // we close the netlink socket
     close(sock);
