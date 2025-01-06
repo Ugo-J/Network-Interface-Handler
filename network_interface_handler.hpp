@@ -123,7 +123,7 @@ void net_interface_handler::process_link_info(struct nlmsghdr *nlh) {
         loopback_interface_set = true;
 
     }
-    else if((ifi->ifi_flags & IFF_UP) && (ifi->ifi_flags & IFF_RUNNING)){
+    else if(1/*(ifi->ifi_flags & IFF_UP) && (ifi->ifi_flags & IFF_RUNNING)*/){
     // with this condition we filter only interfaces that are UP, RUNNING and not the loopback interface
 
         // we increment the num_of_network_interfaces
