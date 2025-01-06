@@ -273,6 +273,7 @@ void net_interface_handler::process_route_info(struct nlmsghdr *nlh) {
         route_info.scope = rtm->rtm_scope;
         route_info.type = rtm->rtm_type;
         route_info.flags = rtm->rtm_flags;
+        route_info.prefixlen = rtm->rtm_dst_len;
 
         // we increment the num of routes for this interface
         loopback_interface.num_of_routes++;
@@ -322,6 +323,7 @@ void net_interface_handler::process_route_info(struct nlmsghdr *nlh) {
             route_info.scope = rtm->rtm_scope;
             route_info.type = rtm->rtm_type;
             route_info.flags = rtm->rtm_flags;
+            route_info.prefixlen = rtm->rtm_dst_len;
 
             // we increment the num of routes for this interface
             interface_array[index].num_of_routes++;
@@ -470,20 +472,13 @@ int net_interface_handler::get_network_interfaces() {
     close(sock);
 
     // print the routes for this interface
-    /* for(int i = 0; i<num_of_network_interfaces; i++){
+    for(int i = 0; i<num_of_network_interfaces; i++){
         std::cout<<interface_array[i].name<<'\n';
         std::cout<<interface_array[i].addr_str<<std::endl;
         for(int j = 0; j<interface_array[i].num_of_routes; j++){
             print_route_info(&interface_array[i].route_array[j]);
         }
 
-    } */
-
-    // print the loopback interface details
-    std::cout<<loopback_interface.name<<'\n';
-    std::cout<<loopback_interface.addr_str<<std::endl;
-    for(int j = 0; j<loopback_interface.num_of_routes; j++){
-        print_route_info(&loopback_interface.route_array[j]);
     }
 
     return 0;
@@ -783,6 +778,105 @@ int net_interface_handler::configure_interface_address(int if_index) {
     return 0;
 }
 
+// functions to add routes
+int net_interface_handler::add_direct_route(struct in_addr& dst, int if_index, int prefixlen, int metric){
+
+    struct {
+        struct nlmsghdr nh;
+        struct rtmsg rtm;
+        char buf[1024];
+    } req{};
+
+    // Setup netlink header
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+    req.nh.nlmsg_type = RTM_NEWROUTE;
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
+
+    // Setup route message
+    req.rtm.rtm_family = AF_INET;
+    req.rtm.rtm_table = RT_TABLE_MAIN;
+    req.rtm.rtm_protocol = RTPROT_BOOT;
+    req.rtm.rtm_scope = RT_SCOPE_LINK;     // Important: scope is LINK for direct routes
+    req.rtm.rtm_type = RTN_UNICAST;
+    req.rtm.rtm_dst_len = prefixlen;
+
+    // Add destination address
+    addAttr(&req.nh, RTA_DST, &dst, sizeof(dst));
+
+    // Add interface index attribute
+    addAttr(&req.nh, RTA_OIF, &if_index, sizeof(if_index));
+
+    // add route metric
+    addAttr(&req.nh, RTA_PRIORITY, &metric, sizeof(metric));
+
+    int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sock < 0)
+        std::cout<<"Failed To Open Netlink Socket"<<std::endl;
+    
+    struct sockaddr_nl sa{};
+    sa.nl_family = AF_NETLINK;
+    
+    if (sendto(sock, (const void*)&req.nh, req.nh.nlmsg_len, 0,
+                (struct sockaddr*)&sa, sizeof(sa)) < 0) {
+        close(sock);
+        std::cout<<"Failed To Send Netlink Message"<<std::endl;
+    }
+    close(sock);
+
+    return 0;
+}
+
+int net_interface_handler::add_gateway_route(struct in_addr& dst, struct in_addr& gw, int if_index, int prefixlen, int metric){
+
+    struct {
+        struct nlmsghdr nh;
+        struct rtmsg rtm;
+        char buf[1024];
+    } req{};
+
+    // Setup netlink header
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+    req.nh.nlmsg_type = RTM_NEWROUTE;
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
+
+    // Setup route message
+    req.rtm.rtm_family = AF_INET;
+    req.rtm.rtm_table = RT_TABLE_MAIN;
+    req.rtm.rtm_protocol = RTPROT_BOOT;
+    req.rtm.rtm_scope = RT_SCOPE_UNIVERSE;  // Important: scope is UNIVERSE for gateway routes
+    req.rtm.rtm_type = RTN_UNICAST;
+    req.rtm.rtm_dst_len = prefixlen;
+
+    // Add destination network attribute
+    addAttr(&req.nh, RTA_DST, &dst, sizeof(dst));
+
+    // Add gateway attribute
+    addAttr(&req.nh, RTA_GATEWAY, &gw, sizeof(gw));
+
+    // Add interface index attribute
+    addAttr(&req.nh, RTA_OIF, &if_index, sizeof(if_index));
+
+    // add route metric
+    addAttr(&req.nh, RTA_PRIORITY, &metric, sizeof(metric));
+
+    // Send the request
+    int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sock < 0)
+        std::cout<<"Failed To Open Netlink Socket"<<std::endl;
+    
+    struct sockaddr_nl sa{};
+    sa.nl_family = AF_NETLINK;
+    
+    if (sendto(sock, (const void*)&req.nh, req.nh.nlmsg_len, 0,
+                (struct sockaddr*)&sa, sizeof(sa)) < 0) {
+        close(sock);
+        std::cout<<"Failed To Send Netlink Message"<<std::endl;
+    }
+    close(sock);
+
+    return 0;
+}
+
 // Function to move interface to network namespace
 int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_tid) {
     
@@ -910,11 +1004,10 @@ int net_interface_handler::move_interface_to_netns(int if_index, pid_t target_ti
     // we bring up the loopback interface for this namespace
     bring_up_loopback();
 
-    // now we set up the network interface address for the loopback address
-    // configure_loopback_address();
+    // we add direct routes
+    add_direct_route(interface_array[0].route_array[0].dst_addr, 3, 24);
 
     // we setup the routing tables for the network interface
-
 
     // we close the netlink socket
     close(sock);

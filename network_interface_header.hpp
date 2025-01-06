@@ -78,6 +78,7 @@ private:
         unsigned char type;
         unsigned int flags;
         unsigned int metric;
+        unsigned int prefixlen;
     };
 
 private:
@@ -142,6 +143,14 @@ private:
         }
     }
 
+    static void addAttr(struct nlmsghdr* nh, int type, const void* data, int len) {
+        struct rtattr* rta = (struct rtattr*)((char*)nh + nh->nlmsg_len);
+        rta->rta_type = type;
+        rta->rta_len = RTA_LENGTH(len);
+        memcpy(RTA_DATA(rta), data, len);
+        nh->nlmsg_len += RTA_LENGTH(len);
+    }
+
 private:
     void print_route_info(struct route_info *route);
     bool send_netlink_request(int sock, int type, int seq);
@@ -153,4 +162,7 @@ private:
     int bring_up_loopback(); // function for bringing up the loopback interface
     int configure_loopback_address();
     int configure_interface_address(int if_index);
+    // functions to add routes
+    int add_direct_route(struct in_addr& dst, int if_index, int prefixlen, int metric = 0);
+    int add_gateway_route(struct in_addr& dst, struct in_addr& gw, int if_index, int prefixlen, int metric = 0);
 };
