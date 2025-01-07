@@ -42,7 +42,7 @@ int main() {
     std::cout<<"IP Address From Thread 1\n";
     curl_easy_perform(handle);
     std::cout<<std::endl;
-    curl_easy_perform(handle2);
+    // curl_easy_perform(handle2);
     std::cout<<std::endl;
 
     t1.join();
