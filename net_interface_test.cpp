@@ -15,6 +15,7 @@ void thread_function(){
         std::cout<<"Adding Interface "<<1<<" To Namespace\n";
         net_handle.add_network_interface(1);
 
+        handle2 = curl_easy_init();
         curl_easy_setopt(handle2, CURLOPT_URL, "https://ifconfig.me/");
         std::cout<<"IP Address From Thread 2\n";
         curl_easy_perform(handle2);
