@@ -12,8 +12,8 @@ std::atomic<bool> check = false;
 void thread_function(){
     if(!net_interface_handler::net_ns_unshare()){
 
-        std::cout<<"Adding Interface "<<0<<" To Namespace\n";
-        net_handle.add_network_interface(0);
+        std::cout<<"Adding Interface "<<1<<" To Namespace\n";
+        net_handle.add_network_interface(1);
 
         curl_easy_setopt(handle2, CURLOPT_URL, "https://ifconfig.me/");
         std::cout<<"IP Address From Thread 2\n";
