@@ -16,7 +16,7 @@ void thread_function(){
         net_handle.add_network_interface(1);
 
         handle2 = curl_easy_init();
-        curl_easy_setopt(handle2, CURLOPT_URL, "https://34.160.111.145/");
+        curl_easy_setopt(handle2, CURLOPT_URL, "https://api.binance.com/api/vi/time");
         std::cout<<"IP Address From Thread 2\n";
         curl_easy_perform(handle2);
         std::cout<<std::endl;
@@ -39,7 +39,7 @@ int main() {
 
     while(!check);
 
-    curl_easy_setopt(handle, CURLOPT_URL, "https://ifconfig.me/");
+    curl_easy_setopt(handle, CURLOPT_URL, "https://api.binance.com/api/vi/time");
     std::cout<<"IP Address From Thread 1\n";
     curl_easy_perform(handle);
     //std::cout<<std::endl;
