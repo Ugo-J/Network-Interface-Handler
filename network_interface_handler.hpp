@@ -142,9 +142,10 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
     int rta_len = IFA_PAYLOAD(nlh);
     int index = -1;
 
-    // we first check if this is the loopback interface - we do not add any test boolean variable like loopback_addr_set because the whole address information about the loopback interface woud be sent in one recv call along with the address info about other network interfaces too
+    // we first check if this is the loopback interface - we do not add any test boolean variable like loopback_addr_set because the whole address information about the loopback interface would be sent in one recv call along with the address info about other network interfaces too
     if(ifa->ifa_index == loopback_interface.index){
     // getting here this is the loopback interface
+
         if(ifa->ifa_family == AF_INET){
         // this is an IPV4 address
 

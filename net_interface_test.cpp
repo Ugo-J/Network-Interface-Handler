@@ -29,7 +29,9 @@ int main() {
 
     curl_global_init(CURL_GLOBAL_ALL); 
     handle = curl_easy_init();
-    handle2 = curl_easy_duphandle(handle);
+
+    std::cout<<"Interface List Before Unshare\n";
+    net_handle.get_network_interfaces();
 
     std::thread t1(thread_function);
 

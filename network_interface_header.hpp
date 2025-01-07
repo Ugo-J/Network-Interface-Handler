@@ -126,8 +126,8 @@ private:
     network_interface interface_array[INTERFACE_ARRAY_SIZE];
 
 public:
-    // we create a static network interface structure to hold the details of the loopback address because this is used to reconfigure the loopback address in new network namespaces - we initialise the num_of_routes to 0
-    inline static network_interface loopback_interface{.num_of_routes=0};
+    // we create a static network interface structure to hold the details of the loopback address because this is used to reconfigure the loopback address in new network namespaces - we initialise the num_of_routes to 0 and the loopback interface index to 1 because the loopback interface always has a device index of 1
+    inline static network_interface loopback_interface{.index=1, .num_of_routes=0};
 
     // bool used to test whether the loopback interface details have been stored in the loopback interface structure
     inline static bool loopback_interface_set = false;
