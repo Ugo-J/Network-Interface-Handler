@@ -4,6 +4,7 @@
 #include <atomic>
 
 CURL* handle;
+CURL* handle2;
 struct curl_slist * headers = NULL;
 net_interface_handler net_handle;
 std::atomic<bool> check = false;
@@ -11,15 +12,15 @@ std::atomic<bool> check = false;
 void thread_function(){
     if(!net_interface_handler::net_ns_unshare()){
 
-        CURL* handle2;
         std::cout<<"Adding Interface "<<1<<" To Namespace\n";
         net_handle.add_network_interface(1);
 
         handle2 = curl_easy_init();
-        curl_easy_setopt(handle2, CURLOPT_URL, "https://ifconfig.me/");
+        curl_easy_setopt(handle2, CURLOPT_URL, "34.160.111.145");
         std::cout<<"IP Address From Thread 2\n";
         curl_easy_perform(handle2);
         std::cout<<std::endl;
+        net_handle.get_network_interfaces();
         check = true;
 
     }
@@ -41,7 +42,7 @@ int main() {
     curl_easy_setopt(handle, CURLOPT_URL, "https://ifconfig.me/");
     std::cout<<"IP Address From Thread 1\n";
     curl_easy_perform(handle);
-    std::cout<<std::endl;
+    //std::cout<<std::endl;
     // curl_easy_perform(handle2);
     std::cout<<std::endl;
 

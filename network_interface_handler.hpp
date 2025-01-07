@@ -956,14 +956,15 @@ int net_interface_handler::add_gateway_route(struct in_addr& dst, struct in_addr
 
     // Send the request
     int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-    if (sock < 0)
+    if (sock < 0){
         std::cout<<"Failed To Open Netlink Socket"<<std::endl;
+        return -1;
+    }
     
     struct sockaddr_nl sa{};
     sa.nl_family = AF_NETLINK;
     
-    if (sendto(sock, (const void*)&req.nh, req.nh.nlmsg_len, 0,
-                (struct sockaddr*)&sa, sizeof(sa)) < 0) {
+    if (sendto(sock, (const void*)&req.nh, req.nh.nlmsg_len, 0, (struct sockaddr*)&sa, sizeof(sa)) < 0) {
         close(sock);
         std::cout<<"Failed To Send Netlink Message"<<std::endl;
     }
