@@ -17,6 +17,8 @@ void thread_function(){
 
         handle2 = curl_easy_init();
         curl_easy_setopt(handle2, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYHOST, 0L);
         curl_easy_setopt(handle2, CURLOPT_URL, "https://34.160.111.145/");
         std::cout<<"IP Address From Thread 2\n";
         curl_easy_perform(handle2);
