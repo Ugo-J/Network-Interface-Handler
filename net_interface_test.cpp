@@ -5,13 +5,13 @@
 
 CURL* handle;
 struct curl_slist * headers = NULL;
-CURL* handle2;
 net_interface_handler net_handle;
 std::atomic<bool> check = false;
 
 void thread_function(){
     if(!net_interface_handler::net_ns_unshare()){
 
+        CURL* handle2;
         std::cout<<"Adding Interface "<<1<<" To Namespace\n";
         net_handle.add_network_interface(1);
 
