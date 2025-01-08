@@ -16,7 +16,7 @@ void thread_function(){
         net_handle.add_network_interface(1);
 
         handle2 = curl_easy_init();
-        curl_easy_setopt(handle2, CURLOPT_VERBOSE, 1L);
+        // curl_easy_setopt(handle2, CURLOPT_VERBOSE, 1L);
         curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYHOST, 0L);
         headers = curl_slist_append(headers, "Host: ifconfig.me");  // The actual hostname
