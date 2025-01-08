@@ -13,7 +13,7 @@ void thread_function(){
     if(!net_interface_handler::net_ns_unshare()){
 
         std::cout<<"Adding Interface "<<1<<" To Namespace\n";
-        net_handle.add_network_interface(1);
+        net_handle.add_network_interface(0);
 
         handle2 = curl_easy_init();
         // curl_easy_setopt(handle2, CURLOPT_VERBOSE, 1L);

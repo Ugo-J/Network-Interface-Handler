@@ -33,6 +33,9 @@ public:
     int get_network_interfaces();
     int add_network_interface(int if_index);
 
+    // the system uses this variable to keep track of the number of interfaces that have been entered into the interface array. This variable should be accessible to the program independent of an object
+    inline static int num_of_network_interfaces = 0;
+
 public:
     // function to unshare a thread from the global network namespace. This function is made static
     static int net_ns_unshare(){
@@ -118,9 +121,6 @@ private:
 
     // this variable holds the size of the interface array in which the network interface details are stored
     static const int INTERFACE_ARRAY_SIZE = 128;
-
-    // the system uses this variable to keep track of the number of interfaces that have been entered into the interface array
-    int num_of_network_interfaces = 0;
 
     // this is the interface array that holds the details of the network interfaces on the system
     network_interface interface_array[INTERFACE_ARRAY_SIZE];
