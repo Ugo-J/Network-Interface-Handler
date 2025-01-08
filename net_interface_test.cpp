@@ -21,9 +21,11 @@ void thread_function(){
         curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYHOST, 0L);
         headers = curl_slist_append(headers, "Host: ifconfig.me");  // The actual hostname
         headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0");  // A common user agent
+        headers = curl_slist_append(headers, "Accept: text/plain");  // Request plain text response
+        headers = curl_slist_append(headers, "User-Agent: curl");
         curl_easy_setopt(handle2, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(handle2, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(handle2, CURLOPT_URL, "https://34.160.111.145/");
+        curl_easy_setopt(handle2, CURLOPT_URL, "https://34.160.111.145/ip");
         std::cout<<"IP Address From Thread 2\n";
         curl_easy_perform(handle2);
         std::cout<<std::endl;
