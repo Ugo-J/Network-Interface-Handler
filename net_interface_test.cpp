@@ -9,23 +9,44 @@ struct curl_slist * headers = NULL;
 net_interface_handler net_handle;
 std::atomic<bool> check = false;
 
+#include <sys/mount.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdio.h>
+
+int setup_dns_in_netns() {    
+    // Bind mount the host's resolv.conf
+    if (mount("/etc/resolv.conf", "/etc/resolv.conf", NULL, MS_BIND, NULL) != 0) {
+        perror("Failed to bind mount resolv.conf");
+        return -1;
+    }
+    else{
+        std::cout<<"Resolv.conf mounted successfully"<<std::endl;
+    }
+    
+    return 0;
+}
+
 void thread_function(){
     if(!net_interface_handler::net_ns_unshare()){
 
+        setup_dns_in_netns();
+
         std::cout<<"Adding Interface "<<1<<" To Namespace\n";
-        net_handle.add_network_interface(0);
+        net_handle.add_network_interface(1);
 
         handle2 = curl_easy_init();
-        // curl_easy_setopt(handle2, CURLOPT_VERBOSE, 1L);
-        curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(handle2, CURLOPT_VERBOSE, 1L);
+        /* curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYHOST, 0L);
         headers = curl_slist_append(headers, "Host: ifconfig.me");  // The actual hostname
         headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0");  // A common user agent
         headers = curl_slist_append(headers, "Accept: text/plain");  // Request plain text response
         headers = curl_slist_append(headers, "User-Agent: curl");
         curl_easy_setopt(handle2, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(handle2, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(handle2, CURLOPT_URL, "https://34.160.111.145/ip");
+        curl_easy_setopt(handle2, CURLOPT_FOLLOWLOCATION, 1L); */
+        // curl_easy_setopt(handle2, CURLOPT_URL, "https://34.160.111.145/ip");
+        curl_easy_setopt(handle2, CURLOPT_URL, "https://ifconfig.me/");
         std::cout<<"IP Address From Thread 2\n";
         curl_easy_perform(handle2);
         std::cout<<std::endl;
