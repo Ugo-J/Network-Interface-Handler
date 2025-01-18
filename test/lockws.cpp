@@ -8,7 +8,7 @@ lock_client second;
 lock_client third;
 
 void second_thread() {
-   std::cout<<"Thread 2\nIP: "<<handle.interface_array[1].addr_str<<std::endl;
+   std::cout<<"Thread 2"<<std::endl;
    if(third.connect("wss://testnet.binance.vision:443", "/ws-api/v3", &(handle.interface_array[1].ip_addr)))
       std::cout<<third.get_error_message()<<std::endl;
    for(int i=0; i<10; i++)
@@ -23,7 +23,7 @@ int main(){
 
    if(second.connect("wss://testnet.binance.vision:443", "/ws-api/v3", &(handle.interface_array[0].ip_addr)))
       std::cout<<second.get_error_message()<<std::endl;
-   std::cout<<"Thread 1\nIP: "<<handle.interface_array[0].addr_str<<std::endl;
+   std::cout<<"Thread 1"<<std::endl;
    for(int i=0; i<10; i++)
       second.send(R"({"id":-1,"method":"time"})");
    for(int i=0; i<10; i++)

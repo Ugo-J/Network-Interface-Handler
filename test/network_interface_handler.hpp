@@ -217,6 +217,16 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
 
                     // we copy the ip address into this interface's in_address structure
                     memcpy(&interface_array[index].ip_addr, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), sizeof(struct in_addr));
+
+                     char ip_str[INET_ADDRSTRLEN];
+        
+                    // Convert the binary IP address to a dotted-decimal string
+                    if (inet_ntop(AF_INET, &interface_array[index].ip_addr, ip_str, sizeof(ip_str)) == NULL) {
+                        perror("inet_ntop");
+                        std::cout<<"Error In Printing IP Address"<<std::endl;
+                    } else {
+                        std::cout << "IP Address: " << ip_str << std::endl;
+                    }
                 }
                 
             }
