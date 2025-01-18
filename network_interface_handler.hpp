@@ -215,6 +215,8 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
                     
                     inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), interface_array[index].addr_str, sizeof(interface_array[index].addr_str));
 
+                    // we copy the ip address into this interface's in_address structure
+                    memcpy(&interface_array[index].ip_addr, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), sizeof(struct in_addr));
                 }
                 
             }
