@@ -9,31 +9,18 @@ struct curl_slist * headers = NULL;
 net_interface_handler net_handle;
 std::atomic<bool> check = false;
 
-#include <sys/mount.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <stdio.h>
-
-int setup_dns_in_netns() {    
-    // Bind mount the host's resolv.conf
-    if (mount("/etc/resolv.conf", "/etc/resolv.conf", NULL, MS_BIND, NULL) != 0) {
-        perror("Failed to bind mount resolv.conf");
-        return -1;
-    }
-    else{
-        std::cout<<"Resolv.conf mounted successfully"<<std::endl;
-    }
-    
-    return 0;
-}
-
 void thread_function(){
     if(!net_interface_handler::net_ns_unshare()){
 
-        setup_dns_in_netns();
+        std::cout<<"Adding Interface "<<0<<" To Namespace\n";
+        net_handle.add_network_interface(0);
 
-        std::cout<<"Adding Interface "<<1<<" To Namespace\n";
-        net_handle.add_network_interface(1);
+        net_handle.get_network_interfaces();
+
+        std::cout<<"Loopback Route In New Namespace"<<std::endl;
+
+        for(int i=0; i<net_interface_handler::loopback_interface.num_of_routes; i++)
+            net_interface_handler::print_route_info(&net_interface_handler::loopback_interface.route_array[i]);
 
         handle2 = curl_easy_init();
         curl_easy_setopt(handle2, CURLOPT_VERBOSE, 1L);
@@ -65,6 +52,11 @@ int main() {
     std::cout<<"Interface List Before Unshare\n";
     net_handle.get_network_interfaces();
 
+    std::cout<<"Loopback Route In Root Namespace"<<std::endl;
+
+    for(int i=0; i<net_interface_handler::loopback_interface.num_of_routes; i++)
+        net_interface_handler::print_route_info(&net_interface_handler::loopback_interface.route_array[i]);
+
     std::thread t1(thread_function);
 
     while(!check);
@@ -72,8 +64,6 @@ int main() {
     curl_easy_setopt(handle, CURLOPT_URL, "https://ifconfig.me/");
     std::cout<<"IP Address From Thread 1\n";
     curl_easy_perform(handle);
-    //std::cout<<std::endl;
-    // curl_easy_perform(handle2);
     std::cout<<std::endl;
 
     t1.join();
