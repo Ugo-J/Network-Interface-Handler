@@ -4431,7 +4431,7 @@ bool lock_client::connect(std::string_view url, std::string_view path = "/", in_
 
                                 // we associate the bound socket to the c_bio structure
                                 BIO_set_fd(c_bio, sock, BIO_NOCLOSE);
-
+                                std::cout<<"Socket Bind Successful"<<std::endl;
                             }
 
                         }
