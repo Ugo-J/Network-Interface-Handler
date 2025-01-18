@@ -52,7 +52,7 @@ int main() {
     std::cout<<"Interface List Before Unshare\n";
     net_handle.get_network_interfaces();
 
-    std::cout<<"Loopback Route In Root Namespace"<<std::endl;
+    /* std::cout<<"Loopback Route In Root Namespace"<<std::endl;
 
     for(int i=0; i<net_interface_handler::loopback_interface.num_of_routes; i++)
         net_interface_handler::print_route_info(&net_interface_handler::loopback_interface.route_array[i]);
@@ -66,7 +66,7 @@ int main() {
     curl_easy_perform(handle);
     std::cout<<std::endl;
 
-    t1.join();
+    t1.join(); */
 
     /* std::cout<<"Interface List Before Unshare\n";
     handle.get_network_interfaces();
