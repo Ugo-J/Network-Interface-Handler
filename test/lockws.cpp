@@ -10,7 +10,7 @@ in_addr interface_address;
 
 void second_thread() {
    std::cout<<"Thread 2"<<std::endl;
-   if(third.connect("wss://testnet.binance.vision:443", "/ws-api/v3", &(handle.interface_array[1].ip_addr)))
+   if(third.connect("wss://testnet.binance.vision:443", "/ws-api/v3", &(handle.interface_array[1].ip_addr), handle.interface_array[0].name))
       std::cout<<third.get_error_message()<<std::endl;
    for(int i=0; i<10; i++)
       third.send(R"({"id":-1,"method":"time"})");
@@ -20,9 +20,9 @@ void second_thread() {
 
 int main(){
 
-   /* handle.get_network_interfaces();
+   handle.get_network_interfaces();
 
-   if(second.connect("wss://testnet.binance.vision:443", "/ws-api/v3", &(handle.interface_array[0].ip_addr)))
+   if(second.connect("wss://testnet.binance.vision:443", "/ws-api/v3", &(handle.interface_array[0].ip_addr), handle.interface_array[0].name))
       std::cout<<second.get_error_message()<<std::endl;
    std::cout<<"Thread 1"<<std::endl;
    for(int i=0; i<10; i++)
@@ -35,6 +35,6 @@ int main(){
    t1.join();
    std::cout<<"Thread 1"<<std::endl;
    second.send(R"({"id":-1,"method":"time"})");
-   second.basic_read(); */
+   second.basic_read();
 
 }
