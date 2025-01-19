@@ -10,7 +10,7 @@ in_addr interface_address;
 
 void second_thread() {
    std::cout<<"Thread 2"<<std::endl;
-   if(third.connect("wss://testnet.binance.vision:443", "/ws-api/v3", &(handle.interface_array[1].ip_addr), handle.interface_array[0].name))
+   if(third.connect("wss://testnet.binance.vision:443", "/ws-api/v3", &(handle.interface_array[1].ip_addr), handle.interface_array[1].name))
       std::cout<<third.get_error_message()<<std::endl;
    for(int i=0; i<10; i++)
       third.send(R"({"id":-1,"method":"time"})");
