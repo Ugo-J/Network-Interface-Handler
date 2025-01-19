@@ -2,7 +2,7 @@
 #include "lockws_structure.hpp"
 
 // lock client constructor
-lock_client::lock_client(std::string_view url, std::string_view path = "/", in_addr* interface_address = NULL){
+lock_client::lock_client(std::string_view url, std::string_view path = "/"){
 
     // initialisation of class wide variables
     if(!openssl_init){
@@ -444,33 +444,6 @@ lock_client::lock_client(std::string_view url, std::string_view path = "/", in_a
                     
                     if(!error){ // only continue if no error
 
-                        // we bind this handle to the specified network interface if the interface_address in_addr pointer parameter is non-null
-                        if(interface_address != NULL){
-                            
-                            // we create the socket fd
-                            int sock = socket(AF_INET, SOCK_STREAM, 0);
-
-                            // Set up local address structure
-                            struct sockaddr_in localaddr;
-                            memset(&localaddr, 0, sizeof(localaddr));
-                            localaddr.sin_family = AF_INET;
-                            localaddr.sin_addr.s_addr = interface_address->s_addr;
-                            localaddr.sin_port = 0;  // Lets the system choose port
-
-                            // Bind socket to specific interface
-                            if (bind(sock, (struct sockaddr*)&localaddr, sizeof(localaddr)) < 0) {
-                                // if the binding fails the library does not set the error flag to true it just prints the error message, ignores the specified interface and attempts to make the connection with whatever network interface is available
-                                std::cout<<"Lockws Error: Binding To Supplied Interface Address Failed...Connection Will Be Attempted With The Default Network Interface..."<<std::endl;
-                            }
-                            else{
-
-                                // we associate the bound socket to the c_bio structure
-                                BIO_set_fd(c_bio, sock, BIO_NOCLOSE);
-                                
-                            }
-
-                        }
-
                         // make the connection
                         if(BIO_do_connect(c_bio) <= 0){
                             
@@ -731,6 +704,10 @@ lock_client::lock_client(std::string_view url, std::string_view path = "/", in_a
         }
     
     }
+
+}
+
+lock_client::lock_client(std::string_view url, std::string_view path = "/", in_addr* interface_address = NULL, char* interface_name = NULL){
 
 }
 
@@ -3983,7 +3960,7 @@ bool lock_client::basic_read(){
         
 }
        
-bool lock_client::connect(std::string_view url, std::string_view path = "/", in_addr* interface_address = NULL){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a websocket connection by using the parameterless constructor, or to connect an already established websocket connection and lock client instance to a different websocket server, it can also be used to retry connecting an instance that encountered an error during connection
+bool lock_client::connect(std::string_view url, std::string_view path = "/"){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a websocket connection by using the parameterless constructor, or to connect an already established websocket connection and lock client instance to a different websocket server, it can also be used to retry connecting an instance that encountered an error during connection
     
     if(client_state == CLOSED){
         
@@ -4226,7 +4203,7 @@ bool lock_client::connect(std::string_view url, std::string_view path = "/", in_
         int last_colon = url.rfind(":"); // get location of last colon
         int last_f_slash = url.rfind("/"); // get location of last forward slash
         
-        if(last_colon < last_f_slash){ // This condition checks that the last colon being considered is the colon before the port number and not the colon immediately after the protocol name (wss:// for instance), we do not need to check that a colon and forward slash were found because that part is already checked by the code that checks the endpoint protocol and all protocol names contained in urls have a colon and a forward slash character in them, so so long as execution got here the supplied url has both a colon and a forward slash 
+        if(last_colon < last_f_slash){ // This condition checks that the last colon being considered is the colon before the port number and not the colon immediately after the protocol name (wss:// for instance), we do not need to check that a colon and forward slash were found because that part is already checked by the code that checks the endpoint protocol and all protocol names contained in urls have a colon and a forward slash character in them, so so long as execution got here the supplied url has both a colon and a forward slash
             
             strncpy(error_buffer, "Supplied URL parameter does not conform to the LockWebSocket endpoint convention", error_buffer_array_length);
                     
@@ -4408,33 +4385,6 @@ bool lock_client::connect(std::string_view url, std::string_view path = "/", in_
                     }
                     
                     if(!error){ // only continue if no error
-
-                        // we bind this handle to the specified network interface if the interface_address in_addr pointer parameter is non-null
-                        if(interface_address != NULL){
-                            
-                            // we create the socket fd
-                            int sock = socket(AF_INET, SOCK_STREAM, 0);
-
-                            // Set up local address structure
-                            struct sockaddr_in localaddr;
-                            memset(&localaddr, 0, sizeof(localaddr));
-                            localaddr.sin_family = AF_INET;
-                            localaddr.sin_addr.s_addr = interface_address->s_addr;
-                            localaddr.sin_port = 0;  // Lets the system choose port
-
-                            // Bind socket to specific interface
-                            if (bind(sock, (struct sockaddr*)&localaddr, sizeof(localaddr)) < 0) {
-                                // if the binding fails the library does not set the error flag to true it just prints the error message, ignores the specified interface and attempts to make the connection with whatever network interface is available
-                                std::cout<<"Lockws Error: Binding To Supplied Interface Address Failed...Connection Will Be Attempted With The Default Network Interface..."<<std::endl;
-                            }
-                            else{
-
-                                // we associate the bound socket to the c_bio structure
-                                BIO_set_fd(c_bio, sock, BIO_NOCLOSE);
-                                std::cout<<"Socket Bind Successful"<<std::endl;
-                            }
-
-                        }
 
                         // make the connection
                         if(BIO_do_connect(c_bio) <= 0){
@@ -4699,6 +4649,306 @@ bool lock_client::connect(std::string_view url, std::string_view path = "/", in_
 
     return error;
         
+}
+
+bool lock_client::connect(std::string_view url, std::string_view path = "/", in_addr* interface_address = NULL, char* interface_name = NULL){
+    
+    if(client_state == CLOSED){
+        
+        memset(error_buffer, '\0', strlen(error_buffer)); // erase previous error message
+        
+        error = false;
+        
+    }
+    else{ // the lock client instance has a websocket connection in open state
+        
+        memset(error_buffer, '\0', strlen(error_buffer)); // erase any previous error message
+        
+        error = false; // sets the error flag to false first so the close function can run 
+        
+        if(close()) // close the open websocket connection 
+            
+            error = false; // if the close function disconnects the connection because an unrecognised length was received, we need to set the error flag to 0 so that the rest of the connect function can proceed without hitch.
+          
+            // no need to memset since an unclean close sets the error flag but writes nothing to the error buffer
+            
+    }
+
+    // check if url is a ws:// or wss:// endpoint, check case insensitively
+    
+    if( (url.compare(0, 6, "wss://") == 0) || (url.compare(0, 6, "Wss://") == 0) || (url.compare(0, 6, "WSs://") == 0) || (url.compare(0, 6, "WSS://") == 0) || (url.compare(0, 6, "WsS://") == 0) || (url.compare(0, 6, "wSS://") == 0) || (url.compare(0, 6, "wsS://") == 0) || (url.compare(0, 6, "wSs://") == 0) ){ // endpoint is a wss:// endpoint, the second parameter to the std::string_view compare function is 6 which is the length of the string "wss://" which we are testing for the presence of, we list out and compare the 8 possible combinations of uppercase and lowercase lettering that are valid
+    
+        int protocal_prefix_len = strlen("wss://");    
+        int base_url_length = url.size() - protocal_prefix_len; // saves the length of the url without the wss:// prefix 
+        
+        // we copy the URL into the c_url array
+        if(base_url_length < url_static_array_length){ // static memory large enough
+        
+            url.copy(c_url_static, base_url_length, protocal_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the static character array
+        
+            c_url_static[base_url_length] = '\0'; // null-terminate the string
+        
+            c_url = c_url_static;
+        
+        }
+        else if(base_url_length < size_of_allocated_url_memory){ // store in already allocated dynamic memory
+        
+            url.copy(c_url_new, base_url_length, protocal_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the already allocated character array
+        
+            c_url_new[base_url_length] = '\0'; // null-terminate the string
+        
+            c_url = c_url_new;
+            
+        
+        }
+        else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not 
+        
+            if(c_url_new == NULL){ // memory has not yet been allocated
+                
+                // heap memory allocation for urls larger than the static array length
+                c_url_new = new(std::nothrow) char[base_url_length + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+            
+            
+                if(c_url_new == NULL){
+                    
+                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                    
+                    error = true;
+                    
+                }
+                else{
+                    
+                    size_of_allocated_url_memory = base_url_length + 1;    
+                        
+                    url.copy(c_url_new, base_url_length, protocal_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
+        
+                    c_url_new[base_url_length] = '\0';
+        
+                    c_url = c_url_new;
+                
+                }
+        
+            }
+            else{ // memory has been allocated but still isn't large enough
+                
+                delete [] c_url_new; // delete the already allocated memory
+                
+                // heap memory allocation for urls larger than the static array length
+                c_url_new = new(std::nothrow) char[base_url_length + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+            
+                
+                if(c_url_new == NULL){
+                    
+                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                    
+                    error = true;
+                    
+                }
+                else{
+                    
+                    size_of_allocated_url_memory = base_url_length + 1;    
+                        
+                    url.copy(c_url_new, base_url_length, protocal_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
+            
+                    c_url_new[base_url_length] = '\0';
+
+                    c_url = c_url_new;
+                
+                }
+            
+            }
+
+        }
+
+    
+
+        // we create an SSL object for this lock client instance
+        SSL *c_ssl = SSL_new(ssl_ctx);
+        if(c_ssl == NULL){
+            
+            strncpy(error_buffer, "Error creating SSL structure ", error_buffer_array_length);
+                    
+            error = true;
+            
+        }
+
+        // Set SNI
+        // SSL_set_tlsext_host_name(c_ssl, hostname);
+
+        // set SSL mode to retry automatically should SSL connection fail
+        SSL_set_mode(c_ssl, SSL_MODE_AUTO_RETRY);
+    
+    }
+    
+    else if( (url.compare(0, 5, "ws://") == 0) || (url.compare(0, 5, "Ws://") == 0) || (url.compare(0, 5, "wS://") == 0) || (url.compare(0, 5, "WS://") == 0)){ // ws:// endpoint, we test the 4 possible combinations of uppercase and lowercase lettering. The second parameter to the std::string_view compare function is the length of the protocol prefix which we test for the presence of
+    
+        int protocal_prefix_len = strlen("ws://");    
+        int base_url_length = url.size() - protocal_prefix_len; // saves the length of the url without the wss:// prefix 
+    
+        // URL copy 
+        if(base_url_length < url_static_array_length){ // static array is sufficient
+    
+            url.copy(c_url_static, base_url_length, protocal_prefix_len); // protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the static character array
+    
+            c_url_static[base_url_length] = '\0'; // null-terminate the string
+    
+            c_url = c_url_static;
+    
+        }
+        else if(base_url_length < size_of_allocated_url_memory){ // store in already allocated dynamic memory
+        
+            url.copy(c_url_new, base_url_length, protocal_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the already allocated character array
+    
+            c_url_new[base_url_length] = '\0'; // null-terminate the string
+    
+            c_url = c_url_new;
+        
+    
+        }
+        else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not 
+        
+            if(c_url_new == NULL){ // memory has not yet been allocated
+            
+                // heap memory allocation for urls larger than the static array length
+                c_url_new = new(std::nothrow) char[base_url_length + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+        
+           
+                if(c_url_new == NULL){
+                
+                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                
+                    error = true;
+                
+                }
+                else{
+                
+                    size_of_allocated_url_memory = base_url_length + 1;    
+                    
+                    url.copy(c_url_new, base_url_length, protocal_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
+       
+                    c_url_new[base_url_length] = '\0';
+    
+                    c_url = c_url_new;
+            
+                }
+    
+            }
+            else{ // memory has been allocated but still isn't large enough
+            
+                delete [] c_url_new; // delete the already allocated memory
+            
+                // heap memory allocation for urls larger than the static array length
+                c_url_new = new(std::nothrow) char[base_url_length + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+        
+           
+                if(c_url_new == NULL){
+                
+                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                
+                    error = true;
+                
+                }
+                else{
+                
+                    size_of_allocated_url_memory = base_url_length + 1;    
+                    
+                    url.copy(c_url_new, base_url_length, protocal_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
+       
+                    c_url_new[base_url_length] = '\0';
+    
+                    c_url = c_url_new;
+            
+                }
+            
+            }
+    
+        }
+    
+        if(!error){ // this only runs if the preceding code executed without the error flag being set, meaning all is good
+            
+            //Non-ssl BIO structure creation
+            c_bio = BIO_new_connect(c_url); // creates the non-ssl bio object with the url supplied
+     
+        }
+    
+    }
+    else{ // not a valid websocket endpoint
+        
+        strncpy(error_buffer, "Supplied URL parameter is not a valid WebSocket endpoint", error_buffer_array_length);
+                
+        error = true;
+        
+    }
+
+    return error;
+}
+
+int lock_client::connect_to_server(const char *hostname, const char *port, in_addr* interface_address, const char *interface_name){
+   struct addrinfo hints, *res, *p;
+
+   // we create the socket the BIO structure would use
+   int sock = socket(AF_INET, SOCK_STREAM, 0);
+   if (sock < 0) {
+      std::cout<<"Error creating socket"<<std::endl;
+      return -1;
+   }
+
+   // Bind to a specific device
+   if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interface_name, strlen(interface_name)) < 0) {
+      perror("setsockopt(SO_BINDTODEVICE)");
+      close(sock);
+      exit(1);
+   }
+   else{
+      std::cout<<"Successfully bound socket to device"<<std::endl;
+   }
+
+   // Set up local address structure
+   struct sockaddr_in localaddr;
+   memset(&localaddr, 0, sizeof(localaddr));
+   localaddr.sin_family = AF_INET;
+   localaddr.sin_addr.s_addr = interface_address->s_addr;
+   localaddr.sin_port = 0;  // Lets the system choose port
+
+   // Bind socket to specific interface
+   if (bind(sock, (struct sockaddr*)&localaddr, sizeof(localaddr)) < 0) {
+      // if the binding fails the library does not set the error flag to true it just prints the error message, ignores the specified interface and attempts to make the connection with whatever network interface is available
+      std::cout<<"Lockws Error: Binding To Supplied Interface Address Failed...Connection Will Be Attempted With The Default Network Interface Address..."<<std::endl;
+   }
+
+   // Set up hints for getaddrinfo
+   memset(&hints, 0, sizeof(hints));
+   hints.ai_family = AF_INET;      // IPv4 (use AF_UNSPEC for both IPv4 and IPv6)
+   hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+
+   // Perform DNS resolution
+   if (getaddrinfo(hostname, port, &hints, &res) != 0) {
+      std::cout<<"Error Resolving Hostname: "<<hostname<<std::endl;
+      return -1;
+   }
+
+   // Iterate over results and try to connect
+   for(p = res; p != NULL; p = p->ai_next) {
+
+      // Try to connect
+      if (::connect(sock, p->ai_addr, p->ai_addrlen) == 0) {
+         std::cout<<"Connected to "<<hostname<<std::endl;
+         break; // Connected successfully
+      }
+
+      perror("connect");
+      close(sock);
+      sock = -1;
+   }
+
+   freeaddrinfo(res); // Free the addrinfo structure
+
+   if (sock < 0) {
+      std::cout<<"Failed to connect to "<<hostname<<':'<<port<<std::endl;
+      return -1;
+   }
+
+   return sock; // Return the connected socket
 }
 
 void lock_client::block_sigpipe_signal(){

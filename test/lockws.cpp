@@ -6,6 +6,7 @@ net_interface_handler handle;
 
 lock_client second;
 lock_client third;
+in_addr interface_address;
 
 void second_thread() {
    std::cout<<"Thread 2"<<std::endl;
@@ -19,7 +20,7 @@ void second_thread() {
 
 int main(){
 
-   handle.get_network_interfaces();
+   /* handle.get_network_interfaces();
 
    if(second.connect("wss://testnet.binance.vision:443", "/ws-api/v3", &(handle.interface_array[0].ip_addr)))
       std::cout<<second.get_error_message()<<std::endl;
@@ -34,5 +35,6 @@ int main(){
    t1.join();
    std::cout<<"Thread 1"<<std::endl;
    second.send(R"({"id":-1,"method":"time"})");
-   second.basic_read();
+   second.basic_read(); */
+
 }
