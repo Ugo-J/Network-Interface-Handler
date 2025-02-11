@@ -1,19 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <net/if.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <linux/netlink.h>
-#include <linux/rtnetlink.h>
-#include <iostream>
-#include <fcntl.h>
-// for the unshare system call
-#include <sched.h>
-// for the syscall to fetch the kernel thread id
-#include <sys/syscall.h>
+#include "network_interface_headers.hpp"
 
 /*  // Network interface statuses
     void print_interface_status(unsigned int flags) {

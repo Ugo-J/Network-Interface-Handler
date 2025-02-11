@@ -1,4 +1,4 @@
-#include "network_interface_header.hpp"
+#include "network_interface_structure.hpp"
 
 void net_interface_handler::print_route_info(struct route_info *route) {
     char dst[INET_ADDRSTRLEN];

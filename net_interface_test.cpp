@@ -52,33 +52,8 @@ int main() {
     std::cout<<"Interface List Before Unshare\n";
     net_handle.get_network_interfaces();
 
-    /* std::cout<<"Loopback Route In Root Namespace"<<std::endl;
-
-    for(int i=0; i<net_interface_handler::loopback_interface.num_of_routes; i++)
-        net_interface_handler::print_route_info(&net_interface_handler::loopback_interface.route_array[i]);
-
-    std::thread t1(thread_function);
-
-    while(!check);
-
-    curl_easy_setopt(handle, CURLOPT_URL, "https://ifconfig.me/");
-    std::cout<<"IP Address From Thread 1\n";
-    curl_easy_perform(handle);
-    std::cout<<std::endl;
-
-    t1.join(); */
-
-    /* std::cout<<"Interface List Before Unshare\n";
-    handle.get_network_interfaces();
-
-    if(net_interface_handler::net_ns_unshare())
-        return 1;
-
-    std::cout<<"Adding Interface "<<0<<" To Namespace\n";
-    handle.add_network_interface(0);
-
-    std::cout<<"Interface List After Adding To This Namespace\n";
-    handle.get_network_interfaces(); */
+    for(int i = 0; i<net_handle.num_of_network_interfaces; i++)
+        std::cout<<net_handle.interface_array[i].name<<std::endl;
 
     return 0;
 }
