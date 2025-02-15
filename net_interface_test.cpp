@@ -1,3 +1,4 @@
+#include "network_interface_structure.hpp"
 #include "network_interface_handler.hpp"
 #include <curl/curl.h>
 #include <thread>
@@ -52,8 +53,17 @@ int main() {
     std::cout<<"Interface List Before Unshare\n";
     net_handle.get_network_interfaces();
 
-    for(int i = 0; i<net_handle.num_of_network_interfaces; i++)
-        std::cout<<net_handle.interface_array[i].name<<std::endl;
+    std::cout<<net_handle.loopback_interface.index<<'\n';
+    std::cout<<net_handle.loopback_interface.name<<'\n';
+    std::cout<<net_handle.loopback_interface.addr_str<<'\n';
+
+    for(int i = 0; i<net_handle.num_of_network_interfaces; i++){
+
+        std::cout<<net_handle.interface_array[i].index<<'\n';
+        std::cout<<net_handle.interface_array[i].name<<'\n';
+        std::cout<<net_handle.interface_array[i].addr_str<<'\n';
+
+    }
 
     return 0;
 }

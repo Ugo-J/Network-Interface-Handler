@@ -140,11 +140,16 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
     struct ifaddrmsg *ifa = static_cast<struct ifaddrmsg *>(NLMSG_DATA(nlh));
     struct rtattr *rta = IFA_RTA(ifa);
     int rta_len = IFA_PAYLOAD(nlh);
-    int index = -1;
+
+    // we set the index to store the interface details - we use the address info returned to fill the network interfaces array because a physical interface could have more than one ip address which should be classified by the system as 2 interfaces, also using this method to populate the interface array we don't need to check if an interface is up and running because only an up and running interface will have an ip address
+    int index = num_of_network_interfaces;
 
     // we first check if this is the loopback interface - we do not add any test boolean variable like loopback_addr_set because the whole address information about the loopback interface would be sent in one recv call along with the address info about other network interfaces too
     if(ifa->ifa_index == loopback_interface.index){
     // getting here this is the loopback interface
+
+        // we store the interface name
+        if_indextoname(ifa->ifa_index, loopback_interface.name);
 
         if(ifa->ifa_family == AF_INET){
         // this is an IPV4 address
@@ -187,58 +192,54 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
     else{
     // getting here this is not the loopback interface so we search to find if it is stored in the interface array
 
-        // we loop through the entered network interfaces to find the index of this network interface in the interface array
-        for(int i = 0; i<num_of_network_interfaces; i++){
-            if(interface_array[i].index == ifa->ifa_index){
-                index = i;
-                break;
-            }
-        }
+        // we set the device index for this entry
+        interface_array[index].index = ifa->ifa_index;
+        
+        // we store the interface name
+        if_indextoname(ifa->ifa_index, interface_array[index].name);
 
-        if(index > -1){
-        // this only runs if a valid index was found
+        if(ifa->ifa_family == AF_INET){
+        // this is an IPV4 address
 
-            if(ifa->ifa_family == AF_INET){
-            // this is an IPV4 address
+            // we store the interface address prefix length
+            interface_array[index].ifa_prefixlen = ifa->ifa_prefixlen;
 
-                // we store the interface address prefix length
-                interface_array[index].ifa_prefixlen = ifa->ifa_prefixlen;
+            // we store the interface address scope
+            interface_array[index].scope = ifa->ifa_scope;
 
-                // we store the interface address scope
-                interface_array[index].scope = ifa->ifa_scope;
+            // we parse the rtattr structure
+            parse_rtattr(interface_array[index].tb, IFA_MAX, rta, rta_len);
 
-                // we parse the rtattr structure
-                parse_rtattr(interface_array[index].tb, IFA_MAX, rta, rta_len);
-
-                // convert the address structure to a c string and store in the interface structure
-                if (interface_array[index].tb[IFA_ADDRESS]) {
-                    
-                    inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), interface_array[index].addr_str, sizeof(interface_array[index].addr_str));
-
-                    // we copy the ip address into this interface's in_address structure
-                    memcpy(&interface_array[index].ip_addr, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), sizeof(struct in_addr));
-                }
+            // convert the address structure to a c string and store in the interface structure
+            if (interface_array[index].tb[IFA_ADDRESS]) {
                 
+                inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), interface_array[index].addr_str, sizeof(interface_array[index].addr_str));
+
+                // we copy the ip address into this interface's in_address structure
+                memcpy(&interface_array[index].ip_addr, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), sizeof(struct in_addr));
             }
-            else{
-            // this is an IPV6 address
+            
+        }
+        else{
+        // this is an IPV6 address
 
-                // we store the interface address prefix length
-                interface_array[index].ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
+            // we store the interface address prefix length
+            interface_array[index].ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
 
-                // we parse the rtattr structure
-                parse_rtattr(interface_array[index].tb_ipv6, IFA_MAX, rta, rta_len);
+            // we parse the rtattr structure
+            parse_rtattr(interface_array[index].tb_ipv6, IFA_MAX, rta, rta_len);
 
-                // convert the address structure into a c string and store it in the interface array
-                if (interface_array[index].tb_ipv6[IFA_ADDRESS]) {
-                    
-                    inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb_ipv6[IFA_ADDRESS]), interface_array[index].addr_str_ipv6, sizeof(interface_array[index].addr_str_ipv6));
-
-                }
+            // convert the address structure into a c string and store it in the interface array
+            if (interface_array[index].tb_ipv6[IFA_ADDRESS]) {
+                
+                inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb_ipv6[IFA_ADDRESS]), interface_array[index].addr_str_ipv6, sizeof(interface_array[index].addr_str_ipv6));
 
             }
 
         }
+
+        // increment the num of network interfaces
+        num_of_network_interfaces++;
 
     }
 }
@@ -379,41 +380,7 @@ int net_interface_handler::get_network_interfaces() {
         return -1;
     }
 
-    // we now query network interface
-    if (!send_netlink_request(sock, RTM_GETLINK, 0)) {
-        std::cout<<"Error Sending RTM_GETLINK Netlink Request\n";
-        close(sock);
-        return -1;
-    }
-
-    // we read the response for this request, the response function stores the interface details in the interface array
-    while ((recv_len = recv(sock, msg_buffer, BUFFER_SIZE, 0)) > 0) {
-        struct nlmsghdr *nlh = (struct nlmsghdr *)msg_buffer;
-        
-        while (NLMSG_OK(nlh, recv_len)) {
-            if (nlh->nlmsg_type == NLMSG_DONE) {
-                break;
-            }
-
-            if (nlh->nlmsg_type == RTM_NEWLINK) {
-                process_link_info(nlh);
-            }
-            else if (nlh->nlmsg_type == RTM_NEWADDR) {
-                process_addr_info(nlh);
-            }
-            else if (nlh->nlmsg_type == RTM_NEWROUTE) {
-                process_route_info(nlh);
-            }
-
-            nlh = NLMSG_NEXT(nlh, recv_len);
-        }
-
-        if (nlh->nlmsg_type == NLMSG_DONE) {
-            break;
-        }
-    }
-
-    // we query the ip address of interfaces that are up and running
+    // we query the ip address of interfaces on this system
     if (!send_netlink_request(sock, RTM_GETADDR, 0)) {
         std::cout<<"Error Sending RTM_GETADDR Netlink Request\n";
         close(sock);
