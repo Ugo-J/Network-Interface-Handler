@@ -49,6 +49,9 @@ int main() {
 
     curl_global_init(CURL_GLOBAL_ALL); 
     handle = curl_easy_init();
+    handle2 = curl_easy_init();
+    curl_easy_setopt(handle, CURLOPT_URL, "https://ifconfig.me/");
+    curl_easy_setopt(handle2, CURLOPT_URL, "https://ifconfig.me/");
 
     std::cout<<"Interface List Before Unshare\n";
     net_handle.get_network_interfaces();
@@ -64,6 +67,12 @@ int main() {
         std::cout<<net_handle.interface_array[i].addr_str<<'\n';
 
     }
+
+    curl_easy_setopt(handle, CURLOPT_INTERFACE, net_handle.interface_array[0].addr_str);
+    curl_easy_setopt(handle2, CURLOPT_INTERFACE, net_handle.interface_array[1].addr_str);
+
+    curl_easy_perform(handle);
+    curl_easy_perform(handle2);
 
     return 0;
 }

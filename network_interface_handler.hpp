@@ -190,7 +190,7 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
         }
     }
     else{
-    // getting here this is not the loopback interface so we search to find if it is stored in the interface array
+    // getting here this is not the loopback interface
 
         // we set the device index for this entry
         interface_array[index].index = ifa->ifa_index;
@@ -218,13 +218,18 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
                 // we copy the ip address into this interface's in_address structure
                 memcpy(&interface_array[index].ip_addr, RTA_DATA(interface_array[index].tb[IFA_ADDRESS]), sizeof(struct in_addr));
             }
+
+            // increment the num of network interfaces
+            num_of_network_interfaces++;
             
         }
         else{
         // this is an IPV6 address
 
+            // we don't process the ipv6 address because the system does not use it and having multiple addresses linking to one interface would introduce complexity in trying to deal with both ipv4 and ipv6 addresses at the same time
+
             // we store the interface address prefix length
-            interface_array[index].ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
+            /* interface_array[index].ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
 
             // we parse the rtattr structure
             parse_rtattr(interface_array[index].tb_ipv6, IFA_MAX, rta, rta_len);
@@ -234,12 +239,9 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
                 
                 inet_ntop(ifa->ifa_family, RTA_DATA(interface_array[index].tb_ipv6[IFA_ADDRESS]), interface_array[index].addr_str_ipv6, sizeof(interface_array[index].addr_str_ipv6));
 
-            }
+            } */
 
         }
-
-        // increment the num of network interfaces
-        num_of_network_interfaces++;
 
     }
 }
