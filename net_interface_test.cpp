@@ -3,6 +3,7 @@
 #include <curl/curl.h>
 #include <thread>
 #include <atomic>
+#include <chrono>
 
 CURL* handle;
 CURL* handle2;
@@ -25,57 +26,31 @@ void thread_function(){
 
         handle2 = curl_easy_init();
         curl_easy_setopt(handle2, CURLOPT_VERBOSE, 1L);
-        /* curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYPEER, 0L);
-        curl_easy_setopt(handle2, CURLOPT_SSL_VERIFYHOST, 0L);
-        headers = curl_slist_append(headers, "Host: ifconfig.me");  // The actual hostname
-        headers = curl_slist_append(headers, "User-Agent: Mozilla/5.0");  // A common user agent
-        headers = curl_slist_append(headers, "Accept: text/plain");  // Request plain text response
-        headers = curl_slist_append(headers, "User-Agent: curl");
-        curl_easy_setopt(handle2, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(handle2, CURLOPT_FOLLOWLOCATION, 1L); */
-        // curl_easy_setopt(handle2, CURLOPT_URL, "https://34.160.111.145/ip");
         curl_easy_setopt(handle2, CURLOPT_URL, "https://ifconfig.me/");
+        curl_easy_setopt(handle2, CURLOPT_USERAGENT, "curl/7.68.0");
         std::cout<<"IP Address From Thread 2\n";
         curl_easy_perform(handle2);
         std::cout<<std::endl;
-        // net_handle.get_network_interfaces();
         check = true;
-
     }
-    
 }
 
 int main() {
-
     curl_global_init(CURL_GLOBAL_ALL); 
     handle = curl_easy_init();
     handle2 = curl_easy_init();
     curl_easy_setopt(handle, CURLOPT_URL, "https://ifconfig.me/");
+    curl_easy_setopt(handle, CURLOPT_USERAGENT, "curl/7.68.0");
     curl_easy_setopt(handle2, CURLOPT_URL, "https://ifconfig.me/");
+    curl_easy_setopt(handle2, CURLOPT_USERAGENT, "curl/7.68.0");
 
-    /* std::cout<<"Interface List Before Unshare\n";
-    net_handle.get_network_interfaces();
-
-    std::cout<<net_handle.loopback_interface.index<<'\n';
-    std::cout<<net_handle.loopback_interface.name<<'\n';
-    std::cout<<net_handle.loopback_interface.addr_str<<'\n';
-
-    for(int i = 0; i<net_handle.num_of_network_interfaces; i++){
-
-        std::cout<<net_handle.interface_array[i].index<<'\n';
-        std::cout<<net_handle.interface_array[i].name<<'\n';
-        std::cout<<net_handle.interface_array[i].addr_str<<'\n';
-
-    } */
-
-    // curl_easy_setopt(handle, CURLOPT_INTERFACE, net_handle.interface_array[0].addr_str);
-    // curl_easy_setopt(handle2, CURLOPT_INTERFACE, net_handle.interface_array[1].addr_str);
-
-    for(int i = 0; i<3; i++)
-
+    for(int i = 0; i<3; i++) {
+        auto start = std::chrono::high_resolution_clock::now();
         curl_easy_perform(handle);
-
-    // curl_easy_perform(handle2);
-
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout << "\nRequest " << (i+1) << " took " << elapsed.count() << " seconds" << std::endl;
+    }
+    
     return 0;
 }
