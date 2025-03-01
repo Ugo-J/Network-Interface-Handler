@@ -226,7 +226,7 @@ void net_interface_handler::process_addr_info(struct nlmsghdr *nlh) {
         else{
         // this is an IPV6 address
 
-            // we don't process the ipv6 address because the system does not use it and having multiple addresses linking to one interface would introduce complexity in trying to deal with both ipv4 and ipv6 addresses at the same time
+            // we don't process the ipv6 address because the system does not use it and having multiple addresses linking to one interface would introduce complexity in trying to deal with both ipv4 and ipv6 addresses at the same time for a single interface
 
             // we store the interface address prefix length
             /* interface_array[index].ifa_prefixlen_ipv6 = ifa->ifa_prefixlen;
